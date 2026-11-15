@@ -437,9 +437,10 @@ test('raise_ask sends an outside tool to ask_for_access, a folder to ask_for_fol
   const description = tools.find((t) => t.name === 'raise_ask')?.description ?? '';
   const { commands, web } = W.SWITCH_NAMES;
   assert.ok(
-    description.includes(
-      `For an outside tool, use ask_for_access; for a folder on this computer, ask_for_folder; for ${commands} or ${web}, see my_access;`
-    ),
+    description.includes('For an outside tool, use ask_for_access.') &&
+      description.includes(
+        `For a folder on this computer, use ask_for_folder; for ${commands} or ${web}, see my_access;`
+      ),
     description
   );
 });

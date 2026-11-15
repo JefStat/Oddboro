@@ -10,8 +10,8 @@ import type { LookSpec } from '@oddboro/sprites/look';
 export type Activity =
   'work' | 'intake' | 'read' | 'wait' | 'play' | 'rest' | 'eat' | 'exercise' | 'talk' | 'home';
 
-/** The most characters an Odd's name, role and remit take, however it joins: hired or added from New Altitude. */
-export const LIMITS = { name: 40, role: 60, remit: 200 } as const;
+/** Character limits for an Odd's profile and job description. */
+export const LIMITS = { name: 40, role: 60, remit: 200, desk: 20_000 } as const;
 export type StaffProfile = {
   id: string;
   name: string;

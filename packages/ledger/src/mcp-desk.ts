@@ -150,7 +150,7 @@ async function placed(a: {
 }): Promise<{ problem: string } | { handOffId?: number; threadId?: number; run?: string }> {
   // A thread it leads is its own work, never a colleague's goal work.
   if (a.work !== undefined && a.work !== null) {
-    const problem = await notLed({ hubId: ME, threadId: a.work, owner: OWNER });
+    const problem = await notLed({ hubId: ME, threadId: a.work });
     // Only a lead's run naming its thread keeps its key there: a colleague's run
     // on a thread must never hold the lead's pick-ups (`waitsOnOwnRun`).
     return problem ? { problem } : { threadId: a.work, run: RUN_KEY };
@@ -162,7 +162,7 @@ async function placed(a: {
 tool(
   'raise_ask',
   {
-    description: `Ask ${OWNER} to approve something. It lands on their desk and they approve, deny, or send it back with what to change, maybe with a reason. Use it for anything that needs their yes. One decision per ask, worded as the exact action: if they approve, you carry it out at once in a new run, with only the ask to go on. The reply lists their closest past decisions: if one matches and gave no reason, tell ${OWNER} that a reason would let Odds handle these without asking next time. For an outside tool, use ask_for_access; for a folder on this computer, ask_for_folder; for ${SWITCH_NAMES.commands} or ${SWITCH_NAMES.web}, see my_access; and for a new Odd, use propose_hire.${raisedNote}`,
+    description: `Ask ${OWNER} to approve something. It lands on their desk and they approve, deny, or send it back with what to change, maybe with a reason. Use it for anything that needs their yes. One decision per ask, worded as the exact action: if they approve, you carry it out at once in a new run, with only the ask to go on. The reply lists their closest past decisions: if one matches and gave no reason, tell ${OWNER} that a reason would let Odds handle these without asking next time. For an outside tool, use ask_for_access. When this proposal will carry out the work, set connect_only on its access requests so each connection does not also start that work. For a folder on this computer, use ask_for_folder; for ${SWITCH_NAMES.commands} or ${SWITCH_NAMES.web}, see my_access; and for a new Odd, use propose_hire.${raisedNote}`,
     inputSchema: {
       title: z
         .string()

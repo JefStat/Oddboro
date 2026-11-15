@@ -36,6 +36,7 @@ import { CHAT_REQUEST_BYTES } from '../staff/chat-input.ts';
 // page is https, so `fromOwnerPage` compares what the browser itself says.
 import type { Handle } from '@sveltejs/kit/hooks';
 import { IN_APP } from '@oddboro/ledger';
+import { BACKUP_MAX_BYTES } from '@oddboro/ledger/office-backup';
 import {
   fromShell,
   fromWindow,
@@ -161,10 +162,18 @@ export const guardOffice: Handle = async ({ event, resolve }) => {
     const upload =
       request.method === 'POST' &&
       /^\/api\/staff\/[a-z0-9-]+\/attachments\/?$/.test(event.url.pathname);
-    const limit = chat ? CHAT_REQUEST_BYTES : upload ? FILE_MAX : 512 * 1024;
+    // A backup to restore is the whole office, checked as it arrives (office-backup.ts).
+    const restore = request.method === 'POST' && event.url.pathname === '/api/backup/restore';
+    const limit = chat
+      ? CHAT_REQUEST_BYTES
+      : upload
+        ? FILE_MAX
+        : restore
+          ? BACKUP_MAX_BYTES
+          : 512 * 1024;
     if (
       request.body &&
-      (chat || upload || process.env.ODDBORO_APP) &&
+      (chat || upload || restore || process.env.ODDBORO_APP) &&
       !(await fits(request, limit))
     )
       return new Response('That request is too large', { status: 413 });

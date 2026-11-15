@@ -4,6 +4,8 @@
   import { systemWords } from '@oddboro/ledger/system-words';
   import { shownAddress, type Address } from '#lib/address.ts';
   import { call } from '../api.ts';
+  import RestoreBackup from '../RestoreBackup.svelte';
+  import SearchDownload from '../SearchDownload.svelte';
   import NotifyHelp from './NotifyHelp.svelte';
   import { browserNeeds } from './notify-help.ts';
 
@@ -15,6 +17,8 @@
     owner: string;
     suggested: string;
     app?: boolean;
+    /** Whether the office keeps its own database, which a backup restores into. */
+    ownDatabase?: boolean;
     system?: System;
     /** Whether the office can show its own notifications on this computer. */
     notify?: boolean;
@@ -26,10 +30,11 @@
 
   // Docker, uv and the login service are for later; Node is right or setup would not have run.
   // Claude Code is on the Your AI card, beside the other tools the office can run on.
-  const SHOWN = ['mac', 'database', 'pgvector', 'notify', 'ollama'];
+  const SHOWN = ['mac', 'database', 'pgvector', 'notify', 'search'];
   let checks = $state<Check[] | undefined>();
   /** In the Mac app, which shows its own notifications and has no browser tab. */
   let app = $state(false);
+  let ownDatabase = $state(false);
   let system = $state<System | undefined>();
   let canNotify = $state(true);
   let canOpenSettings = $state(false);
@@ -45,6 +50,7 @@
       const s = await call<Setup>('/api/setup');
       onsetup(s);
       app = !!s.app;
+      ownDatabase = !!s.ownDatabase;
       system = s.system;
       canNotify = s.notify !== false;
       canOpenSettings = !!s.notifySettings;
@@ -137,7 +143,11 @@
         <span class="font-bold {TONE[c.state]}" aria-label={c.state}>{MARK[c.state]}</span>
         <span>{c.name}</span>
         <span class="min-w-0 text-muted">{c.found}</span>
-        {#if c.state !== 'ok' && c.fix}
+        {#if c.download}
+          <span class="col-start-2 col-end-4 text-xs">
+            <SearchDownload check={c} ondone={(done) => (checks = checks?.with(i, done))} />
+          </span>
+        {:else if c.state !== 'ok' && c.fix}
           <span class="col-start-2 col-end-4 text-xs text-faint">{c.fix.replaceAll('`', '')}</span>
         {/if}
       </li>
@@ -285,6 +295,16 @@
         {/if}
       {/if}
     </div>
+  </div>
+{/if}
+
+{#if checks && ownDatabase}
+  <div class="mt-4">
+    <div class="text-[10px] tracking-[0.14em] text-muted uppercase">Have a backup?</div>
+    <p class="mt-2 mb-2 text-xs text-muted">
+      Bring an office you backed up into this one, with its Odds and their work.
+    </p>
+    <RestoreBackup />
   </div>
 {/if}
 

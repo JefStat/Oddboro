@@ -13,6 +13,7 @@
 // published sums. `node apps/desktop/scripts/smoke.ts --stage` then checks the
 // stage as the app would run it.
 import { stagePty } from '../../../scripts/prepare-pty.mjs';
+import { stageSearchRuntime } from './search-runtime.ts';
 import { execFileSync, execSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -188,7 +189,8 @@ const BUILD_ONLY = [
 ];
 /**
  * Native packages shipped under their publisher's signature. The terminal
- * binaries are checked separately because the app signs them at release.
+ * and search binaries are checked separately because the app signs them at
+ * release (`signedAtRelease`).
  */
 const NATIVE = ['node_modules/@napi-rs/keyring-'];
 
@@ -209,8 +211,8 @@ function isNative(path: string): boolean {
  * and secure timestamp for each file the release does not sign itself.
  */
 function checkNative(path: string, rel: string): void {
-  // The Mac release signs precisely these terminal files before Tauri bundles them.
-  if (terminalFiles.has(path)) return;
+  // The Mac release signs precisely these terminal and search files before Tauri bundles them.
+  if (signedAtRelease.has(path)) return;
   if (!NATIVE.some((p) => rel.startsWith(p)))
     throw new Error(`stage/${rel} is native code the app does not sign. Leave it out of the stage`);
   if (process.platform !== 'darwin') return;
@@ -332,7 +334,7 @@ writeFileSync(
 npm(['install', '--omit=dev', '--omit=peer', '--no-audit', '--no-fund', '--loglevel=error'], STAGE);
 for (const p of [...BUILD_ONLY, '.bin/sentry'])
   rmSync(join(STAGE, 'node_modules', p), { recursive: true, force: true });
-const terminalFiles = new Set(stagePty(STAGE));
+const signedAtRelease = new Set([...stagePty(STAGE), ...stageSearchRuntime(STAGE)]);
 for (const p of PACKAGES) stagePackage(p);
 stageOffice();
 prune(STAGE);

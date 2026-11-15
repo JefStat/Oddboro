@@ -45,6 +45,7 @@ import {
 
 const { mcpServers, GATEWAY_TOKEN } = await import('./codex.ts');
 const { stopGroups } = await import('./launch.ts');
+const { processGone } = await import('./drive.ts');
 const { deniedEdits } = await import('./files.ts');
 
 await L.pg`insert into staff ${L.pg([
@@ -733,14 +734,8 @@ test('whatever a Codex run with Run commands left running stops when the run end
     await L.pg`update staff set commands = false where id = 'cole'`;
   }
   const pid = Number(readFileSync(at, 'utf8'));
-  const alive = () => {
-    try {
-      process.kill(pid, 0);
-      return true;
-    } catch {
-      return false;
-    }
-  };
+  // A signal still finds a process that exited and waits to be reaped, so it asks ps too.
+  const alive = () => !processGone(pid);
   try {
     for (let i = 0; i < 100 && alive(); i++) await new Promise((r) => setTimeout(r, 20));
     assert.equal(alive(), false, 'the sleep the run started outlived it');
@@ -763,20 +758,10 @@ setInterval(() => {}, 1000);`
     ],
     { detached: true, stdio: 'ignore' }
   );
+  // What ps says of a process, for a failure's message.
   const state = (pid: number) =>
     spawnSync('ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf8' }).stdout.trim();
-  // The command and the tool that started it stop together, so the command can
-  // sit a moment as a zombie, dead but not yet reaped, which kill(pid, 0)
-  // still answers for.
-  const alive = (pid: number) => {
-    try {
-      process.kill(pid, 0);
-    } catch {
-      return false;
-    }
-    const s = state(pid);
-    return s !== '' && !s.startsWith('Z');
-  };
+  const alive = (pid: number) => !processGone(pid);
   /** Until `done`, within 10 s on a busy runner; done ends the wait at once. */
   const wait = async (done: () => boolean) => {
     const until = Date.now() + 10_000;

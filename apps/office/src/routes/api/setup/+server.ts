@@ -89,6 +89,8 @@ export const GET: RequestHandler = async () => {
   logSetup(checks);
   return json({
     app: IN_APP,
+    /** Whether the office keeps its own database, which is what a backup covers. */
+    ownDatabase: LOCAL,
     system: currentSystem(),
     /** Whether the office can show its own notifications here. */
     notify: CAN_NOTIFY,

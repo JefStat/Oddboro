@@ -3,7 +3,7 @@
 // (`makeHomePrivate`), the office's own database if .env names
 // no other (copied aside first on a new version's first start), the tables
 // brought up to date, the update row reset, then the job clock, the follow-up
-// watcher, one read of the New Altitude personas, and the office's address in
+// watcher, the rest of a ledger re-index if one is owed, one read of the New Altitude personas, and the office's address in
 // the owner's Caddy if it uses theirs (never in the app, which has no address).
 // Each step's time goes to the log and to /api/health (`#lib/server/health.ts`).
 // In the app (ODDBORO_APP) it also quits when the app does: on SIGTERM, once
@@ -21,7 +21,7 @@
 import { release } from 'node:os';
 import { sequence, type ServerInit } from '@sveltejs/kit/hooks';
 import { handleErrorWithSentry, sentryHandle } from '@sentry/sveltekit';
-import { IN_APP, LOCAL, makeHomePrivate, whenOddLeaves } from '@oddboro/ledger';
+import { IN_APP, LOCAL, makeHomePrivate, reindexLedger, whenOddLeaves } from '@oddboro/ledger';
 import { home, OFFICE_PORT } from '@oddboro/ledger/home';
 import { trustSystemCertificates } from '@oddboro/ledger/certificates';
 import { startLocalDatabase } from '@oddboro/ledger/local-db';
@@ -76,6 +76,11 @@ export const init: ServerInit = async () => {
   await timed('update row', loadUpdate);
   startClock();
   startFollowUps();
+  // A re-index the office stopped partway, or one for rows written while the
+  // model could not run. Nothing to do, and it does nothing, once every row is done.
+  void reindexLedger().catch((e: unknown) =>
+    console.error('office: the ledger re-index stopped:', e)
+  );
   // An Odd that leaves the office stops what it is running at once.
   whenOddLeaves(stopRuns);
   // Never awaited: an office offline or signed out starts as fast as any.

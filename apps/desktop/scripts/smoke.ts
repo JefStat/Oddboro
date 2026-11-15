@@ -266,8 +266,8 @@ async function officeChecks(
     const summary = checks.map((c) => `${c.id}: ${c.state} (${c.found})`).join('; ');
     return setupPasses((id) => checks.find((c) => c.id === id)?.state, expect.claude, summary);
   });
-  // Each ledger line waits for its embedding: with Ollama installed, the first
-  // one loads the model cold, about 20 s.
+  // Each ledger line waits for its embedding: with the search model downloaded,
+  // the first one loads it, well under a second on an M-series Mac.
   await step(onboardName, true, async () =>
     expectStatus(
       await office.send(

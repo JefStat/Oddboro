@@ -136,6 +136,12 @@ if (has('ask_for_access'))
           .enum(['read', 'write'])
           .describe('read to look, write to change things in the tool.'),
         why: z.string().describe('What job this access is for, in one or two sentences.'),
+        connect_only: z
+          .boolean()
+          .optional()
+          .describe(
+            'Set true when a separate proposal or job will do the work. This request only connects the tool. By default the Odd picks up its waiting work as soon as access is ready.'
+          ),
         key_header: z
           .string()
           .max(64)
@@ -152,7 +158,15 @@ if (has('ask_for_access'))
         revises: revisesArg
       }
     },
-    async ({ connector: wanted, level: asked, why, key_header, another_account, revises }) => {
+    async ({
+      connector: wanted,
+      level: asked,
+      why,
+      key_header,
+      another_account,
+      connect_only,
+      revises
+    }) => {
       const on = await placed({});
       if ('problem' in on) return refused(on.problem);
       const level = asked === 'write' ? 'act' : 'read';
@@ -201,17 +215,25 @@ if (has('ask_for_access'))
       const title = another
         ? `Connect another ${plain} account (${asked})`
         : `Connect ${conn.name} (${asked})`;
+      const connection = another
+        ? `You get numbered steps to sign in to another Google account for ${plain}, for ${me.name}.`
+        : conn.readyAt
+          ? `${me.name} can use ${conn.name} at once: you connected it already, so there are no steps.`
+          : `You get numbered steps to connect ${conn.name} for ${me.name}.`;
       const { ask, precedent } = await raiseAsk(ME, {
         ...on,
         title,
         why,
-        ifApproved: another
-          ? `You get numbered steps to sign in to another Google account for ${plain}, for ${me.name}.`
-          : conn.readyAt
-            ? `${me.name} can use ${conn.name} at once: you connected it already, so there are no steps.`
-            : `You get numbered steps to connect ${conn.name} for ${me.name}.`,
+        ifApproved: connect_only
+          ? `${connection} This request only connects the tool. The work starts separately.`
+          : connection,
         revises,
-        access: { connector: conn.id, level, ...(another ? { another } : {}) }
+        access: {
+          connector: conn.id,
+          level,
+          ...(another ? { another } : {}),
+          ...(connect_only && { connectOnly: true })
+        }
       });
       return text(
         `Ask ${ask.id} is on ${OWNER}'s desk.` +

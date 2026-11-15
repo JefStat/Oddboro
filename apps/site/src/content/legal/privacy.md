@@ -1,6 +1,6 @@
 # Privacy Policy
 
-Effective date: November 13, 2026
+Effective date: November 15, 2026
 
 > **The short version.** Oddboro is open source software that runs on your own computer: a Mac, Windows or Linux. Its database lives on that computer. New Altitude, Inc. operates no server that stores your office's data. Signing in to a New Altitude account is optional. If you sign in and turn on error reports in Setup, the software sends reports of what broke through our relay to Sentry, without your account. If you also add a New Altitude persona as an Odd, your conversations with it go to New Altitude. When you connect the software to Anthropic or another service, your data goes to that service under your own account and its own terms, never through us. This website asks before it counts your visit. If you click Allow, PostHog sets a cookie and records the pages you view and what you click on oddboro.com. It covers this website only: the Oddboro app sends it nothing. Cloudflare, which hosts the site, also counts page views, without cookies. The only personal data we can hold about you is what PostHog recorded on this site if you allowed it, the approximate location in error reports you turned on, and New Altitude's records of your sign-in and of your conversations with any persona you add. If that ever changes, we will update this policy, say so in the repository and on this site, and change the effective date above.
 
@@ -23,7 +23,7 @@ This policy covers two things, and they work differently.
 It does not cover:
 
 - **GitHub.** When you visit, clone, star, or open an issue in the repository, GitHub collects what GitHub collects under [GitHub's privacy statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
-- **Anthropic, Ollama and any other service you connect the software to.** Each one handles your data under its own terms and privacy policy. Section 5 lists them.
+- **Anthropic and any other service you connect the software to or download from.** Each one handles your data under its own terms and privacy policy. Section 5 lists them.
 - **Your New Altitude account.** If you have one, New Altitude holds it under the [New Altitude Privacy Policy](https://newaltitude.ai/privacy) and the terms you accepted for it.
 
 ### Definitions
@@ -61,7 +61,7 @@ Cloudflare, which hosts the site, counts page views and how fast pages load with
 
 **Server logs.** The provider that hosts the site may keep standard server logs for security and to keep the service running. A typical log line holds the IP address a request came from, the browser's user agent string, the time, and the page requested. We do not add to those logs, we do not use them to identify or profile anyone, and we do not combine them with anything else. The provider keeps them for its own standard period under its own policy.
 
-**Links.** The site links to GitHub, Anthropic, Ollama and others. Once you follow a link, the site you land on governs.
+**Links.** The site links to GitHub, Anthropic and others. Once you follow a link, the site you land on governs.
 
 ## 4. The software runs on your computer
 
@@ -107,9 +107,9 @@ If you run Oddboro from source, it sends no reports unless you name your own Sen
 
 To stop: open Setup and turn off "Send error and tracing reports to New Altitude". The office stops at once. Signing out stops them too.
 
-### Local search embeddings
+### Ledger search
 
-If you install [Ollama](https://ollama.com) and the `nomic-embed-text` model, the office turns ledger text into vectors so Odds can search decisions by meaning. That request goes to Ollama at `127.0.0.1:11434` on your computer and nowhere else. Without Ollama, search works by words only and nothing changes about where data lives.
+If you click Download on the ledger search line in Setup, the office downloads a search model (Nomic Embed Text v1.5, about 140 MB) from Oddboro's own releases on GitHub, once, and keeps it in the office's folder on your computer. The office then turns ledger text into vectors itself, so Odds can search decisions by meaning. That text, and what an Odd searches for, never leaves your computer. Without the model, search works by words only and nothing changes about where data lives.
 
 ### System features the software uses
 
@@ -158,13 +158,11 @@ If New Altitude offers your account a persona, such as Nate, you can add it as a
 - New Altitude keeps these conversations under the [New Altitude Privacy Policy](https://newaltitude.ai/privacy), may let its staff read them, and sends them to the AI providers it uses.
 - To stop, choose Disconnect next to the persona under Setup, Account, or sign out. It stays in your office, quiet.
 
-### Ollama
-
-Local only. See section 4.
-
 ### GitHub
 
-You clone the software from GitHub. If you choose the `https://local.oddboro.com` address during setup and your computer has no [Caddy](https://caddyserver.com), the office downloads the official Caddy release from GitHub (`api.github.com` and GitHub's release files) and checks it against the published checksum. GitHub sees those download requests.
+You clone the software from GitHub. The search model also comes from Oddboro's own GitHub releases, once, when you turn on ledger search by clicking Download in Setup. GitHub sees that download request as it sees the app's update checks: your IP address and the files asked for, and nothing of yours. The office checks each file against a checksum fixed in the software before it uses it. See section 4.
+
+If you choose the `https://local.oddboro.com` address during setup and your computer has no [Caddy](https://caddyserver.com), the office downloads the official Caddy release from GitHub (`api.github.com` and GitHub's release files) and checks it against the published checksum. GitHub sees those download requests.
 
 An Odd may also ask for your GitHub, through GitHub's own MCP server. You approve or deny it, and you sign in to GitHub yourself, in your browser. GitHub shows you what Oddboro asks for: `repo` (the repositories you can reach, public and private), `read:org` (your organizations) and `read:user` (your profile). GitHub has no narrower way to read private repositories, so the access you give each Odd sets what it may do, as for any other tool: at Read it gets only GitHub's tools that read.
 

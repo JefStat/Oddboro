@@ -67,7 +67,7 @@ pieces under 3,900 bytes a line, so no value is on a command line.
    reading. Where it stands is real state: an open ask or task from it puts
    it outside the owner's door (`wait`), a running job puts it to work in its room,
    and so does a thread of its own a colleague holds (its tag reads "Waiting on
-   <colleague>"; `wantOf` in the page), and otherwise it wanders between work and breaks. A free Odd's own
+   <colleague>"; `floorMode` in `src/lib/staff/odd-now.ts`), and otherwise it wanders between work and breaks. A free Odd's own
    clock starts when it arrives, for a random stay that depends on the
    activity (`STAY` in the page), so Odds never all get up at once. An
    Odd on a job stays at it until the job ends. While an Odd walks, its
@@ -165,7 +165,7 @@ pieces under 3,900 bytes a line, so no value is on a command line.
    restart mid-run marks it failed rather than run it twice. When the owner
    gave the answer on a card in the Odd's own chat, the route gets `chat: true`,
    the follow-up keeps that card (`chatCard`, set by `followUp`, `setGoal` or
-   `answerThread` in the ledger), and as the run ends `endFollowUp` adds its
+   `answerLead` in the ledger), and as the run ends `endFollowUp` adds its
    reply to that chat as one `told` line whose `re` names the card
    (`answerInChat` in `staff.ts`); a failed run's line says so in one line and
    carries `runFailed`, never `failed`, which would mark the owner's line before
@@ -192,7 +192,7 @@ pieces under 3,900 bytes a line, so no value is on a command line.
    once, each hire becomes a hire ask the page opens in its own hire window,
    and the owner's steps land as a task. Every plan goes on its goal's thread,
    whatever run raised it, and once those parts exist the answer brings the
-   manager back there (`answerThread`), told to lead the work by handing each
+   manager back there (`answerLead` in the ledger), told to lead the work by handing each
    piece on; a denied one, told not to start it. The plan's hire asks go on
    that thread too, so hiring one brings the manager back again, to hand the
    hire its first piece.
@@ -487,7 +487,7 @@ pieces under 3,900 bytes a line, so no value is on a command line.
    it in the Odd's own `attachments/` (`src/lib/server/chat-files.ts`)
    under `<date>-<time>-<4 random hex>-<name>`, never over another file,
    then the message names them by tag and kept name. The run's message
-   ends with each tag's full path (`attachedBrief` in `staff.ts`), and the
+   ends with each tag's full path (`attachedBrief` in `chat-run.ts`), and the
    run opens them with its own file tools; Codex, whose `view_image` is
    off, gets the pictures as `--image`. `chat.jsonl` keeps them on the
    owner's line (`files`), and the chat shows them from
@@ -551,7 +551,7 @@ pieces under 3,900 bytes a line, so no value is on a command line.
    install. `src/lib/server/staff.ts` runs `claude -p` on the owner's login for chats,
    job runs, follow-ups and drafts, or `grok -p` for an Odd that runs on Grok,
    `codex exec` for one on Codex, or `gemini` for one on Gemini (`staff.agent`;
-   each but Claude Code gets ready through `LAUNCHES` in `src/lib/server/cli.ts`). The owner picks it in the hire
+   each gets ready through `LAUNCHES` in `src/lib/server/cli.ts`). The owner picks it in the hire
    window's Model step, stored with the hire before its hello runs, and on the
    Settings tab's Model tab (`AccessTab.svelte`), which both show
    `ModelPicker.svelte`; both list the tools `/api/agents` finds on PATH
@@ -1175,7 +1175,7 @@ pieces under 3,900 bytes a line, so no value is on a command line.
     A thread its hub parked with `resume_at` wakes at that time: the clock
     starts the hub's `resume` follow-up. One parked on a task (`after_task`)
     wakes when that task is done or dropped, with no clock. So does a thread the usage window
-    held, at the window's reset (`usage-window.ts` in the ledger).
+    held, at the window's reset (`handedOff` in the ledger's `src/work/hand-offs.ts`).
     A manual run leaves the schedule where it was, and the Office Manager's report data
     (office times) tells the two apart. The Jobs tab edits a job in place, and opens the Odd's job description
     in the document editor (`src/lib/ui/JobDescription.svelte`); a save
@@ -1205,8 +1205,17 @@ pieces under 3,900 bytes a line, so no value is on a command line.
     EOF
     ```
 
-12. **Hire** on the office plate opens a five-step drawer
-    (`src/lib/ui/HireDrawer.svelte`). Step one makes the person's look
+12. **Hire** on the office plate opens the hire drawer
+    (`src/lib/ui/HireDrawer.svelte`). An owner can start it from a Claude Code
+    agent Markdown file with Import. Its name, description, instructions and
+    supported model fill the same form, and the form names in plain words the
+    settings left in the file. A header that does not parse says so in one
+    sentence. Each MCP server the file lists by an https address, or by a name
+    the office's tools have (`knownTools`), becomes an access ask at read on the
+    desk when the Odd is hired (`src/lib/server/imported-servers.ts`), so nothing
+    connects without the owner's yes. A server that runs a command is listed in
+    the form and never run or asked for. Picking another choice clears the
+    import. Step one makes the person's look
     (`src/lib/ui/LookStudio.svelte`), drawn or built. Drawn: the owner
     describes them, LookStudio asks `/api/looks`, and
     the owner sees the portrait and the walk, then redraws with a note or keeps it.
@@ -1227,8 +1236,8 @@ pieces under 3,900 bytes a line, so no value is on a command line.
     untick it; a proposal can say either way. "Draft it" drafts the job
     description. Both run as the office (`src/lib/server/office-run.ts`),
     never as an Odd, so a new office can hire its first. An office run goes
-    to the office's tool (`officeAgent()`): on Grok or Codex through that
-    tool's own launch (`LAUNCHES` in `cli.ts`) and sandbox, in a folder of
+    to the office's tool (`officeAgent()`) through its launch (`LAUNCHES` in
+    `cli.ts`): on Grok or Codex with that tool's own sandbox, in a folder of
     its own under `<home>/office/runs` that reads nothing else, has no MCP,
     web or network, and goes when the run ends, pictures and all. A hire with
     no tool picked starts on the office's tool. Opened from a
@@ -1551,7 +1560,7 @@ a ready-made one), a bus drives up the street, and they walk from the bus stop
 to the owner's desk, where their card opens on the chat. Skip, under the caption
 while they come, sends the bus off and puts them at the desk at once
 (`StaffActor.arrive`). Until the office has
-moved in, the page keeps the floor it raised (`landing`) rather than reloading on the move. "Good Morning, Neighbor" opens the music over it. The music is a player (`music.svelte.ts`, one per page) over the 25 tracks in `static/audio/`, named in `tracks.ts`: a random order that skips the last few played, loved tracks twice as often, passed ones never, repeat one, and the Mac's media keys. Later visits play only if the owner left it on. Every choice is per viewer in localStorage. The tracks are AAC with every tag stripped but the title, since Safari won't play Opus, and LICENSE-ASSETS keeps the folder out of the Apache license. The bottom of the start panel (`FloorControls.svelte`), there during the first run and after, holds the player on the start side (the track's name, then love, back, play, next, repeat, pass, then the seek bar with the time, and a speaker that opens a vertical volume slider with a mute). A hairline separates it from the end side, where the light and, under it, the zoom stack at the same width. The light: Auto follows the office clock, the sun and the moon hold the floor at day or night for that viewer. Then the zoom: Fit shows the whole office in the room the panels leave (and stops following an Odd), and minus and plus step a crisp level out or in (`Floor.zoomBy`), gliding. A plan that fails twice raises the sample instead.
+moved in, the page keeps the floor it raised (`landing`) rather than reloading on the move. "Good Morning, Neighbor" opens the music over it. The music is a player (`music.svelte.ts`, one per page) over the 25 tracks in `static/audio/`, named in `tracks.ts`: a random order that skips the last few played, loved tracks twice as often, passed ones never, repeat one, and the Mac's media keys. Later visits play only if the owner left it on. Every choice is per viewer in localStorage. The player also offers focus noise (`static/sounds/focus-noise.m4a`, a 32 second pink noise loop whose end crossfades into its start): the player's icon is a button with a caret that opens a menu, Soundtrack or Focus noise, and the icon becomes three waves while the noise is on. The song stays loaded and paused meanwhile, so switching back resumes it where it stopped. The noise plays through Web Audio (a looping buffer and a gain node for the volume), since an `<audio loop>` leaves about 50 ms of silence at each restart; its audio context is made at the first play and suspended whenever the noise stops. The tracks are AAC with every tag stripped but the title, since Safari won't play Opus, and LICENSE-ASSETS keeps the folder out of the Apache license. The bottom of the start panel (`FloorControls.svelte`), there during the first run and after, holds the player on the start side (the icon and its menu, the track's name, then love, back, play, next, repeat, pass, then the seek bar with the time, and a speaker that opens a vertical volume slider with a mute). A hairline separates it from the end side, where the light and, under it, the zoom stack at the same width. The light: Auto follows the office clock, the sun and the moon hold the floor at day or night for that viewer. Then the zoom: Fit shows the whole office in the room the panels leave (and stops following an Odd), and minus and plus step a crisp level out or in (`Floor.zoomBy`), gliding. A plan that fails twice raises the sample instead.
 
 ## The office's address
 
@@ -1948,41 +1957,43 @@ the persona's voice.
 2. `npm run service:uninstall -w apps/office` removes it. Stop it before
    running `npm run dev`, since both want port 4500.
 3. The office starts its own database, so nothing else has to. A database in
-   Docker needs Docker Desktop to start at login. Ollama must run for search
-   by meaning; without it the ledger falls back to words.
+   Docker needs Docker Desktop to start at login. Search by meaning runs inside
+   the office once the owner downloads the search model from Setup
+   (`POST /api/setup/search`); without it the ledger falls back to words.
 
 ## Where things live
 
-| Path                                  | What it holds                                                                                                                         |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/lib/floor/`                      | The PixiJS floor and the Odds on it                                                                                                   |
-| `src/lib/staff/roster.ts`             | The Odd shape the page gets (`StaffProfile`), hiring looks, and the label for each activity                                           |
-| `src/lib/ui/`                         | The card and its tabs, the Desk, the Ledger, hiring, chat                                                                             |
-| `src/lib/server/`                     | Staff runs, office runs, looks, the job clock, events, keychain. Where to start a change there: [CLAUDE.md](src/lib/server/CLAUDE.md) |
-| `src/lib/server/profile.ts`           | An Odd as the page gets it (`toProfile`): its stored switches and folders, and what its runs reach now                                |
-| `src/lib/server/sandbox.ts`           | What a run's commands reach: the variables hidden from them, Claude Code's sandbox, the developer tool folders, and the refusal line  |
-| `src/lib/server/aws.ts`               | AWS: the office's one sign-in, each AWS tool's role and the read check, the names-only Secrets Manager tool, and keys from AWS        |
-| `src/lib/site.ts`                     | Links to the public site's guides (`siteLink`): `localhost:4501` under `npm run dev`, else oddboro.com, or `ODDBORO_SITE_URL`         |
-| `src/routes/api/`                     | One folder per thing the page reads or changes                                                                                        |
-| `src/lib/server/office-design.ts`     | Drawing an office from the owner's words, and where Odds move to                                                                      |
-| `src/lib/server/design-job.ts`        | The drawing as a job on the server, which pages follow                                                                                |
-| `src/lib/ui/onboarding/`              | A new owner's first visit: the cards, the reveal's story, the music                                                                   |
-| `src/lib/floor/reveal.ts`             | The office going up beat by beat, and the bus                                                                                         |
-| `src/lib/diagnostics.ts`              | What a report may carry, and when a trace is taken: the server's, the relay's and the page's one rule                                 |
-| `src/lib/server/diagnostics.ts`       | The SDK's options and the gate every report passes, with the owner's answer                                                           |
-| `src/lib/server/account.ts`           | The New Altitude sign-in: start, callback, refresh, sign out                                                                          |
-| `src/lib/account.ts`                  | The account and its states, shared by the server and the page                                                                         |
-| `src/lib/server/persona.ts`           | The personas New Altitude offers: sync, each persona's sign-in, install, Disconnect                                                   |
-| `src/lib/server/persona-package.ts`   | A persona's package checked before the office trusts it                                                                               |
-| `src/lib/server/persona-offered.ts`   | The names and slugs on offer at the last read, as one prompt line for an Odd that can propose a hire                                  |
-| `src/lib/server/persona-run.ts`       | A persona Odd's run: its hands, then its voice, and every word sent to its door                                                       |
-| `src/lib/server/persona-door.ts`      | The persona's door on New Altitude: its address, scope, what a turn sends and what comes back                                         |
-| `src/lib/persona.ts`                  | The offers, the quiet reasons and their lines, shared by the server and the page                                                      |
-| `src/lib/ui/persona-offers.svelte.ts` | The page's offers and each persona's wait or problem, with Add, Reconnect, Disconnect and Check again                                 |
-| `src/lib/ui/PersonaQuiet.svelte`      | A quiet persona Odd's line and its one button                                                                                         |
-| `src/lib/server/hosts.ts`             | The office's names through Caddy (`HOSTS`), alone so reporting loads before Postgres                                                  |
-| `scripts/office-service.ts`           | The login service                                                                                                                     |
-| `src/app.css`                         | Tokens. Every colour in the chrome reads these.                                                                                       |
+| Path                                  | What it holds                                                                                                                                                                |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/lib/floor/`                      | The PixiJS floor and the Odds on it                                                                                                                                          |
+| `src/lib/staff/roster.ts`             | The Odd shape the page gets (`StaffProfile`), hiring looks, and the label for each activity                                                                                  |
+| `src/lib/ui/`                         | The card and its tabs, the Desk, the Ledger, hiring, chat                                                                                                                    |
+| `src/lib/server/`                     | Staff runs, office runs, looks, the job clock, events, keychain. Where to start a change there: [CLAUDE.md](src/lib/server/CLAUDE.md)                                        |
+| `src/lib/server/profile.ts`           | An Odd as the page gets it (`toProfile`): its stored switches and folders, and what its runs reach now                                                                       |
+| `src/lib/server/sandbox.ts`           | What a run's commands reach: the variables hidden from them, Claude Code's sandbox, the developer tool folders, and the refusal line                                         |
+| `src/lib/server/aws.ts`               | AWS: the office's one sign-in, each AWS tool's role and the read check, the names-only Secrets Manager tool, and keys from AWS                                               |
+| `src/lib/site.ts`                     | Links to the public site's guides (`siteLink`): `localhost:4501` under `npm run dev`, else oddboro.com, or `ODDBORO_SITE_URL`                                                |
+| `src/routes/api/`                     | One folder per thing the page reads or changes                                                                                                                               |
+| `src/lib/server/office-design.ts`     | Drawing an office from the owner's words, and where Odds move to                                                                                                             |
+| `src/lib/server/design-job.ts`        | The drawing as a job on the server, which pages follow                                                                                                                       |
+| `src/lib/ui/onboarding/`              | A new owner's first visit: the cards, the reveal's story, the music                                                                                                          |
+| `src/lib/floor/reveal.ts`             | The office going up beat by beat, and the bus                                                                                                                                |
+| `src/lib/diagnostics.ts`              | What a report may carry, and when a trace is taken: the server's, the relay's and the page's one rule                                                                        |
+| `src/lib/server/diagnostics.ts`       | The SDK's options and the gate every report passes, with the owner's answer                                                                                                  |
+| `src/lib/server/account.ts`           | The New Altitude sign-in: start, callback, refresh, sign out                                                                                                                 |
+| `src/lib/account.ts`                  | The account and its states, shared by the server and the page                                                                                                                |
+| `src/lib/server/persona.ts`           | The personas New Altitude offers: sync, each persona's sign-in, install, Disconnect                                                                                          |
+| `src/lib/server/persona-package.ts`   | A persona's package checked before the office trusts it                                                                                                                      |
+| `src/lib/server/persona-offered.ts`   | The names and slugs on offer at the last read, as one prompt line for an Odd that can propose a hire                                                                         |
+| `src/lib/server/persona-run.ts`       | A persona Odd's run: its hands, then its voice, and every word sent to its door                                                                                              |
+| `src/lib/server/persona-door.ts`      | The persona's door on New Altitude: its address, scope, what a turn sends and what comes back                                                                                |
+| `src/lib/persona.ts`                  | The offers, the quiet reasons and their lines, shared by the server and the page                                                                                             |
+| `src/lib/ui/persona-offers.svelte.ts` | The page's offers and each persona's wait or problem, with Add, Reconnect, Disconnect and Check again                                                                        |
+| `src/lib/ui/PersonaQuiet.svelte`      | A quiet persona Odd's line and its one button                                                                                                                                |
+| `src/lib/server/office-backup.ts`     | Back up this office and Restore from a backup: the download, taking a file back, and starting again so it goes in. What a backup holds is in the ledger's `office-backup.ts` |
+| `src/lib/server/hosts.ts`             | The office's names through Caddy (`HOSTS`), alone so reporting loads before Postgres                                                                                         |
+| `scripts/office-service.ts`           | The login service                                                                                                                                                            |
+| `src/app.css`                         | Tokens. Every colour in the chrome reads these.                                                                                                                              |
 
 ## Rules for this app
 

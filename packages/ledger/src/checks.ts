@@ -1,5 +1,5 @@
 // What an install needs, checked one thing at a time: this computer, Claude Code,
-// the database and the optional helpers. `npm run setup` walks the owner
+// the database, ledger search and the optional helpers. `npm run setup` walks the owner
 // through these, and the office's Setup window shows them again. Nothing here
 // imports db.ts, so it runs before there is a database to connect to.
 import { readFileSync } from 'node:fs';
@@ -15,6 +15,8 @@ import {
   probe,
   serviceInstalled
 } from './platform.ts';
+import { modelProblem, modelReady } from './embed.ts';
+import { isDownloading, modelOnDisk, MODEL_MB, RUNS_HERE } from './search-model.ts';
 import { secretStore } from './secrets.ts';
 import { computerWord } from './system-words.ts';
 
@@ -27,6 +29,8 @@ export type Check = {
   found: string;
   /** What to do about it, when it is not ok. */
   fix?: string;
+  /** A download in MB that fixes it, which Setup offers as a button. */
+  download?: number;
 };
 
 /** Whether a command ran cleanly, and all it printed. */
@@ -172,33 +176,46 @@ export async function checkClaude(): Promise<Check> {
   };
 }
 
-/** Ollama and its embedding model, for searching the ledger by meaning. */
-export async function checkOllama(): Promise<Check> {
-  const url = process.env.OLLAMA_URL ?? 'http://127.0.0.1:11434';
-  try {
-    const res = await fetch(`${url}/api/tags`, { signal: AbortSignal.timeout(3000) });
-    const tags = (await res.json()) as { models?: { name: string }[] };
-    if (tags.models?.some((m) => m.name.startsWith('nomic-embed-text')))
-      return { id: 'ollama', name: 'Ollama', state: 'ok', found: 'Running, with nomic-embed-text' };
+/**
+ * Ledger search by meaning: the search model, which the owner downloads from
+ * Setup and the office runs itself (search-model.ts, embed.ts). Without it the
+ * ledger is searched by its words.
+ */
+export async function checkSearch(): Promise<Check> {
+  const name = 'Ledger search';
+  const here = `this ${computerWord(currentSystem())}`;
+  if (!RUNS_HERE)
     return {
-      id: 'ollama',
-      name: 'Ollama',
+      id: 'search',
+      name,
       state: 'optional',
-      found: 'Running, without the embedding model',
-      fix: 'Run `ollama pull nomic-embed-text`. Until then the ledger is searched by its words only.'
+      found: 'Searches by words',
+      fix: `The search model does not run on ${here}, so the ledger is searched by its words.`
     };
-  } catch {
-    const installed = (await run('ollama', ['--version'])).ok;
+  if (isDownloading())
+    return { id: 'search', name, state: 'optional', found: 'Downloading the search model' };
+  // Loading it is the only way to know it runs. The office loads it once.
+  const ready = modelOnDisk() && (await modelReady());
+  if (modelOnDisk() && !ready)
     return {
-      id: 'ollama',
-      name: 'Ollama',
+      id: 'search',
+      name,
       state: 'optional',
-      found: installed ? 'Installed, not running' : 'Not installed',
-      fix: installed
-        ? 'Open the Ollama app, then run `ollama pull nomic-embed-text`.'
-        : 'Install Ollama from ollama.com, then run `ollama pull nomic-embed-text`. Until then the ledger is searched by its words only.'
+      found: 'Downloaded, but it would not start',
+      fix: 'The ledger is searched by its words. The office log says why.'
     };
-  }
+  if (ready) return { id: 'search', name, state: 'ok', found: `Searches by meaning, on ${here}` };
+  return {
+    id: 'search',
+    name,
+    state: 'optional',
+    found:
+      modelProblem() === 'mismatch'
+        ? 'The model did not match its checksum, so the office removed it'
+        : 'Searches by words',
+    fix: `Download the search model in the office's Setup (about ${MODEL_MB} MB) to search by meaning. It runs on ${here}, and nothing you search leaves it.`,
+    download: MODEL_MB
+  };
 }
 
 /** uv, which runs the tools that come from PyPI. */
@@ -435,7 +452,7 @@ export async function checkMachine(): Promise<Check[]> {
     checkNode(),
     checkClaude(),
     checkDocker(),
-    checkOllama(),
+    checkSearch(),
     checkUv(),
     checkService(),
     checkKeyring()

@@ -13,6 +13,7 @@ import {
   welcomed,
   zone
 } from '@oddboro/ledger';
+import { lastRestore } from '@oddboro/ledger/office-backup';
 import { computerWord } from '@oddboro/ledger/system-words';
 import { accountStatus } from '#lib/server/account.ts';
 import { keepAddress } from '#lib/server/address.ts';
@@ -52,6 +53,8 @@ export const load: PageServerLoad = async () => {
     /** Whether the owner passed the Act check, so the page asks it before a first raise to Act. */
     actChecked: await actCheckPassed(),
     diagnostics: diagnosticsState(),
+    /** The backup this start restored, until the owner closes its line. */
+    restored: lastRestore(),
     account: accountStatus()
   };
 };

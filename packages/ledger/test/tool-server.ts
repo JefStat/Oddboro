@@ -41,8 +41,7 @@ const place = {
   ODDBORO_DB_PORT: String(port),
   // A file that does not exist, so no .env reaches this office.
   ODDBORO_ENV: join(folder, 'none.env'),
-  ODDBORO_LOCAL_DB: '1',
-  OLLAMA_URL: 'http://127.0.0.1:9'
+  ODDBORO_LOCAL_DB: '1'
 };
 Object.assign(process.env, place);
 // The run's migrated database when global-setup.ts made one: local-db.ts then

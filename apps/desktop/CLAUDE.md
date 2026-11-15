@@ -165,13 +165,12 @@ not start or keep running (no randomness for the key counts as not starting),
 | `ODDBORO_PORT`                 | the same                                                   |
 | `HOST`                         | `127.0.0.1`                                                |
 | `ORIGIN`                       | `http://127.0.0.1:<port>`                                  |
-| `BODY_SIZE_LIMIT`              | `12M` for chat imports; attachments keep their own limit   |
+| `BODY_SIZE_LIMIT`              | `16G`, for a backup to restore; the office limits the rest |
 | `ODDBORO_HOME`                 | `~/.oddboro` (`%USERPROFILE%\.oddboro`), unless set        |
 | `ODDBORO_CODE`                 | `<resources>/server`                                       |
 | `ODDBORO_DB_PORT`              | passed through when the shell's env sets it; Windows only  |
 | `PATH`                         | the login-shell PATH from step 3                           |
 | `ODDBORO_VERSION`              | the app's version, like `0.0.4`                            |
-| `BODY_SIZE_LIMIT`              | `11M`, so a 10 MB file attached in a chat gets through     |
 | `ODDBORO_UPDATES`              | `1` in release builds, which update themselves             |
 | `ODDBORO_SECRETS`              | `shell` on a Mac: the shell keeps the office's secrets     |
 | `ODDBORO_GOOGLE_CLIENT_SECRET` | the Google sign-in client's secret, when the build had one |

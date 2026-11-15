@@ -24,12 +24,12 @@ import {
 // Read only inside functions, so the import cycle with managers.ts is safe.
 import { MANAGER_ROLE } from './managers.ts';
 import { currentPlatform } from './platform.ts';
-import { HAND_OFF_CHOICE, levelAtMost, type Level } from './access-words.ts';
+import { HAND_OFF_CHOICE, levelAtMost, type Level, type OwnSwitch } from './access-words.ts';
 import { isGrantable, OFFICE_TOOLS, officeToolsSaid, ON_BY_DEFAULT } from './tools.ts';
 import { HIRE_DEFAULTS } from './grantable.ts';
 import { lookSignature, type DrawnPart, type LookSpec } from '@oddboro/sprites/look';
 import type { PersonaLink } from './personas.ts';
-import type { StaffRow } from './office.ts';
+import type { AskRow, StaffRow } from './office.ts';
 import { record } from './office-ledger.ts';
 
 // Staff
@@ -141,18 +141,32 @@ async function changeLevel(
   actsOnHandOffs?: boolean
 ): Promise<{ title: string; also?: string } | undefined> {
   const before = await staffer(id, q);
-  if (!before || before.permission === permission) return;
+  if (!before) return;
+  const change = levelChange(before, permission, actsOnHandOffs);
+  if (!change) return;
   await needActCheck(q, permission);
+  await q.update(staff).set(change.set).where(eq(staff.id, id));
+  return { title: change.title, ...(change.also ? { also: change.also } : {}) };
+}
+
+/**
+ * The change `changeLevel` makes to `before`, and its ledger words. Nothing
+ * when the Odd is already at that level. Pure, so the work core reads the
+ * same words before a level ask's yes makes the change.
+ */
+function levelChange(
+  before: StaffRow,
+  permission: Level,
+  actsOnHandOffs?: boolean
+): { set: Partial<StaffRow>; title: string; also?: string } | undefined {
+  if (before.permission === permission) return;
   const chose =
     permission === 'act' &&
     actsOnHandOffs !== undefined &&
     actsOnHandOffs !== before.actsOnHandOffs;
-  await q
-    .update(staff)
-    .set(chose ? { permission, actsOnHandOffs } : { permission })
-    .where(eq(staff.id, id));
   const up = !levelAtMost(permission, before.permission);
   return {
+    set: chose ? { permission, actsOnHandOffs } : { permission },
     title: `${up ? 'Raised' : 'Lowered'} ${before.name} from ${before.permission} to ${permission}`,
     ...(chose ? { also: HAND_OFF_CHOICE.ledger(before.name, actsOnHandOffs) } : {})
   };
@@ -326,18 +340,57 @@ async function changeTools(
   if (!tools.every(isGrantable)) throw fixedError('That is not an office tool you grant');
   const before = await staffer(id, q);
   if (!before) return;
+  const change = toolsChange(before, tools, on);
+  if (!change) return;
+  await q.update(staff).set({ tools: change.tools }).where(eq(staff.id, id));
+  return { title: change.title, body: change.body };
+}
+
+/**
+ * The change `changeTools` makes to `before`, and its ledger words. Nothing
+ * when every tool named is already that way. Pure, so the work core reads the
+ * same words before an office tool ask's yes makes the change.
+ */
+function toolsChange(
+  before: StaffRow,
+  tools: readonly string[],
+  on: boolean
+): { tools: string[]; title: string; body: string } | undefined {
   const changing = OFFICE_TOOLS.filter(
     (t) => tools.includes(t.id) && before.tools.includes(t.id) !== on
   );
   if (!changing.length) return;
   const ids: string[] = changing.map((t) => t.id);
-  const after = on ? [...before.tools, ...ids] : before.tools.filter((t) => !ids.includes(t));
-  await q.update(staff).set({ tools: after }).where(eq(staff.id, id));
   const said = officeToolsSaid(ids);
   return {
+    tools: on ? [...before.tools, ...ids] : before.tools.filter((t) => !ids.includes(t)),
     title: on ? `Gave ${before.name} ${said}` : `Took ${said} from ${before.name}`,
     body: changing.map((t) => t.does).join(' ')
   };
+}
+
+/**
+ * The ledger words of a yes to a level or office tool ask, for the Odd as it
+ * is before the yes: the Settings tab's line for the change, and `also`, the
+ * owner's choice for work from colleagues that a raise to Act stored. Empty
+ * when the yes changes nothing, as a level the Odd already holds or passed,
+ * or tools already on. What `grantSetting` in office-decide.ts then writes.
+ */
+export function settingGranted(
+  before: StaffRow,
+  a: Pick<AskRow, 'kind' | 'level' | 'officeTools'>,
+  actsOnHandOffs?: boolean
+): { title?: string; also?: string } {
+  if (a.kind === 'level') {
+    if (!a.level || levelAtMost(a.level, before.permission)) return {};
+    const change = levelChange(before, a.level, actsOnHandOffs);
+    return change ? { title: change.title, ...(change.also ? { also: change.also } : {}) } : {};
+  }
+  if (a.kind === 'office_tool') {
+    const change = toolsChange(before, a.officeTools ?? [], true);
+    return change ? { title: change.title } : {};
+  }
+  return {};
 }
 
 /**
@@ -410,21 +463,13 @@ export async function setModel(
  */
 export async function setOwnTool(
   id: string,
-  which: 'commands' | 'web',
+  which: OwnSwitch,
   on: boolean
 ): Promise<{ refused: string } | undefined> {
-  const before = await staffer(id);
-  if (!before) return;
-  if (which === 'commands') {
-    const refused = commandsRefused(before.agent);
-    if (refused) return refused;
-  }
-  if (before[which] === on) return;
-  await db
-    .update(staff)
-    .set({ [which]: on })
-    .where(eq(staff.id, id));
-  const n = before.name;
+  const changed = await changeOwnTools(db, id, { which: [which], on });
+  if (!changed || 'refused' in changed) return changed;
+  if (!changed.on.length) return;
+  const n = changed.before.name;
   const title =
     which === 'commands'
       ? on
@@ -437,8 +482,38 @@ export async function setOwnTool(
     kind: 'access',
     actor: 'owner',
     title,
-    ...networkNote(before, { ...before, [which]: on })
+    ...networkNote(changed.before, changed.after)
   });
+}
+
+/**
+ * Set a working Odd's own switches in `which` to `on`, in `q`, the one change
+ * both the Settings tab (`setOwnTool`) and a switch ask's yes make. Ones
+ * already set stay as they are, and `on` names those that changed. Run
+ * commands in `which` is refused for a tool that does not follow the switch
+ * on this system, before anything changes. The caller writes the ledger line.
+ */
+export async function changeOwnTools(
+  q: Db,
+  id: string,
+  { which, on }: { which: readonly OwnSwitch[]; on: boolean }
+): Promise<
+  { before: StaffRow; after: StaffRow; on: OwnSwitch[] } | { refused: string } | undefined
+> {
+  const before = await staffer(id, q);
+  if (!before) return;
+  if (which.includes('commands')) {
+    const refused = commandsRefused(before.agent);
+    if (refused) return refused;
+  }
+  const changing = which.filter((s) => before[s] !== on);
+  if (!changing.length) return { before, after: before, on: changing };
+  const [after] = await q
+    .update(staff)
+    .set(Object.fromEntries(changing.map((s) => [s, on])))
+    .where(eq(staff.id, id))
+    .returning();
+  return after && { before, after, on: changing };
 }
 
 export type Hire = Pick<

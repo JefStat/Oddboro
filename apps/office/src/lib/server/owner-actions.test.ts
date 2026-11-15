@@ -725,6 +725,11 @@ const UNDRIVEN: Partial<Record<Key, string>> = {
   'POST /api/setup/claude': 'Installs or signs in Claude Code.',
   'DELETE /api/setup/claude': 'Signs Claude Code out.',
   'POST /api/setup/notify': 'Shows a system notification.',
+  'POST /api/setup/search': "Downloads the search model from Oddboro's GitHub release.",
+  'POST /api/backup':
+    "Removes a file in the office's home and touches no table; no driver is written yet.",
+  'POST /api/backup/restore':
+    'Takes a backup file as its body and restarts the office, which `request` cannot send or survive.',
   'POST /api/browser-link':
     "Only the app's shell, with its key in a header, asks for one, and `request` sends no headers.",
   'POST /api/update':

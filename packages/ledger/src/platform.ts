@@ -126,6 +126,22 @@ function ended(e: ExecFileException, out: string, err: string): Probe {
 
 const run = async (cmd: string, args: string[]) => (await probe(cmd, args)).status === 'ok';
 
+/**
+ * Whether `pid` exited and waits for its parent to reap it, which
+ * `process.kill(pid, 0)` still finds. ps says so on a Mac and Linux. Windows
+ * has no ps and no such wait, so there it never does. False when ps fails.
+ */
+export function waitsToBeReaped(pid: number): boolean {
+  if (currentPlatform() === 'win32') return false;
+  try {
+    return execFileSync('ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf8' })
+      .trim()
+      .startsWith('Z');
+  } catch {
+    return false;
+  }
+}
+
 // Windows PowerShell 5.1 ships with every Windows, so the office reaches the
 // Credential Manager, toasts and Task Scheduler through it with nothing to
 // install. Values go in as environment variables, never pasted into the

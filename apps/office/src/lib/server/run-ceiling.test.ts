@@ -277,7 +277,14 @@ const STATES: State[] = [
     ceiling: 'draft',
     go: async (o) => {
       const h = await gave(o, 'lead', { title: `More from ${o}` });
-      await L.answerThread(h.thread, 'Do the next part too.');
+      // The owner's no to an ask the Odd raised there wakes it with their words.
+      const { ask } = await L.raiseAsk(o, {
+        title: `Stop after the first part, ${o}`,
+        why: 'It may be enough.',
+        ifApproved: 'The work stops there.',
+        threadId: h.thread
+      });
+      await L.decideAsk(ask.id, 'deny', 'Do the next part too.');
       return { follow: await only(o, 'resume') };
     }
   }
