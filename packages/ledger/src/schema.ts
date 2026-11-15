@@ -664,7 +664,7 @@ export type ConnectorConfig = {
   account?: string;
 };
 /** The Google products the office serves itself. One connector is one account of one product. */
-export type GoogleProduct = 'gmail' | 'drive';
+export type GoogleProduct = 'gmail' | 'drive' | 'calendar';
 
 /** The role an AWS tool uses, and where. None of it is secret. */
 export type AwsConfig = {

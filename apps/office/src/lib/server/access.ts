@@ -25,6 +25,7 @@ import {
   type GoogleProduct
 } from '@oddboro/ledger';
 import { awsReady, secretNamesClient, toolKeys } from './aws.ts';
+import { calendarServer } from './google/calendar.ts';
 import { driveServer } from './google/drive.ts';
 import { gmailServer, heldWords, type HeldWords } from './google/gmail.ts';
 import { bearer, BuiltWithout, startSignIn } from './oauth.ts';
@@ -96,12 +97,12 @@ const BUILTIN: Record<
   (token: () => Promise<string>, account?: string) => McpServer
 > = {
   gmail: gmailServer,
-  drive: driveServer
+  drive: driveServer,
+  calendar: calendarServer
 };
 
 /**
- * A server the office serves itself, inside this process: Gmail and Google
- * Drive, one server per account, whose tools name the account they reach.
+ * A server the office serves itself, inside this process, one server per account, whose tools name the account they reach.
  * Each call asks `bearer` for a live token, so the Google sign-in never
  * leaves the office, not even to a process of its own.
  */
