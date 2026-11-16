@@ -221,8 +221,25 @@ export type HeldCall = {
    * the desk shows them.
    */
   before?: { tool: string; arguments: Record<string, unknown> }[];
+  /** A Google Calendar event the call makes or changes, which the desk shows as an event to edit. */
+  event?: HeldEvent;
   /** Set once the office made the call: whether the tool took it, and its words. */
   result?: { ok: boolean; text: string; at: string };
+};
+/**
+ * What the desk needs beside a held `create_event` or `update_event` call's
+ * own inputs: the account it goes through, and for a change, the event as
+ * Google had it when the call was held. Google emails everyone on an event
+ * about a change, so `others` is who gets an email besides anyone added.
+ * Words from strangers: the page shows them, and no Odd's prompt carries them.
+ */
+export type HeldEvent = {
+  /** The calendar account's address, which is never emailed. */
+  account?: string;
+  /** For a change: the event's title as it stood. */
+  now?: string;
+  /** For a change: the people on the event besides the owner. */
+  others: string[];
 };
 /** What a catch_up ask fills: one job's missed scheduled times, ISO, oldest first. */
 export type CatchUp = { jobId: number; times: string[] };

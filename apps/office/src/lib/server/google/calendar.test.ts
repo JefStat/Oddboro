@@ -1,10 +1,11 @@
 // Exercise the same MCP tools a run receives. Only Google's HTTP reply is a fixture.
 import assert from 'node:assert/strict';
-import { after, test } from 'node:test';
+import { after, test, type TestContext } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { readsOnly } from '@oddboro/ledger';
-import { calendarServer } from './calendar.ts';
+import { calendarServer, ownerEdit, withEventFooter } from './calendar.ts';
+import { OWNER_META } from './http.ts';
 
 const [ours, theirs] = InMemoryTransport.createLinkedPair();
 const server = calendarServer(async () => 'test-token', 'reader@example.com');
@@ -91,4 +92,135 @@ test('get_event reads the selected occurrence and a busy check keeps errors by c
   });
   assert.equal(bad.isError, true);
   assert.equal(sent.length, 2);
+});
+
+test('only create_event and update_event change anything, and no tool deletes', async () => {
+  const { tools } = await client.listTools();
+  assert.deepEqual(
+    tools
+      .filter((t) => !readsOnly(t))
+      .map((t) => t.name)
+      .sort(),
+    ['create_event', 'update_event']
+  );
+  assert.ok(tools.every((t) => !t.annotations?.destructiveHint));
+});
+
+/** Every call to Google, with its body, and an event on the calendar with these attendees. */
+function stand(t: TestContext, on: object[] = []) {
+  const sent: { method: string; url: URL; body?: Record<string, unknown> }[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit = {}) => {
+    const method = init.method ?? 'GET';
+    sent.push({
+      method,
+      url: new URL(url),
+      body: typeof init.body === 'string' ? JSON.parse(init.body) : undefined
+    });
+    return Response.json(method === 'GET' ? { summary: 'Standup', attendees: on } : { id: 'e1' });
+  });
+  return sent;
+}
+const yes = { _meta: { [OWNER_META]: true } };
+const lunch = {
+  summary: 'Lunch',
+  start_time: '2026-11-20T12:00:00-08:00',
+  end_time: '2026-11-20T13:00:00-08:00'
+};
+
+test("an event with guests is refused from a run, and goes with sendUpdates=all on the owner's click", async (t) => {
+  const sent = stand(t);
+  const refused = await client.callTool({
+    name: 'create_event',
+    arguments: { ...lunch, attendees: ['ada@example.com'] }
+  });
+  assert.equal(refused.isError, true);
+  assert.match(JSON.stringify(refused.content), /only when the owner clicks/);
+  assert.equal(sent.length, 0);
+  // Only the owner's own address on it: nobody else is emailed, so it goes.
+  const own = await client.callTool({
+    name: 'create_event',
+    arguments: { ...lunch, attendees: ['Reader@example.com'] }
+  });
+  assert.notEqual(own.isError, true);
+  assert.equal(sent[0].url.searchParams.get('sendUpdates'), 'none');
+  const r = await client.callTool({
+    name: 'create_event',
+    arguments: { ...lunch, attendees: ['ada@example.com'], description: 'Bring cake.' },
+    ...yes
+  });
+  assert.notEqual(r.isError, true);
+  assert.equal(sent[1].url.searchParams.get('sendUpdates'), 'all');
+  // On the click the description is the owner's: the office adds nothing.
+  assert.equal(sent[1].body?.description, 'Bring cake.');
+  assert.match(JSON.stringify(r.content), /emailed an invite to ada@example\.com/);
+});
+
+test('an all-day event takes dates, and an end before its start is refused', async (t) => {
+  const sent = stand(t);
+  await client.callTool({
+    name: 'create_event',
+    arguments: { summary: 'Off', start_time: '2026-12-24', end_time: '2026-12-27', all_day: true }
+  });
+  assert.deepEqual(sent[0].body?.start, { date: '2026-12-24' });
+  assert.deepEqual(sent[0].body?.end, { date: '2026-12-27' });
+  const back = await client.callTool({
+    name: 'create_event',
+    arguments: { ...lunch, end_time: '2026-11-20T11:00:00-08:00' }
+  });
+  assert.equal(back.isError, true);
+  const zoneless = await client.callTool({
+    name: 'create_event',
+    arguments: { summary: 'x', start_time: '2026-11-20T12:00:00', end_time: '2026-11-20T13:00:00' }
+  });
+  assert.equal(zoneless.isError, true);
+  assert.equal(sent.length, 1);
+});
+
+test('a change to an event with guests on it waits for the click, and keeps the guests it does not take off', async (t) => {
+  const sent = stand(t, [
+    { email: 'reader@example.com', self: true },
+    { email: 'bo@example.com', responseStatus: 'accepted' },
+    { email: 'cy@example.com' }
+  ]);
+  const refused = await client.callTool({
+    name: 'update_event',
+    arguments: { event_id: 'e1', location: 'Cafe' }
+  });
+  assert.equal(refused.isError, true);
+  assert.ok(sent.every((s) => s.method === 'GET'));
+  await client.callTool({
+    name: 'update_event',
+    arguments: {
+      event_id: 'e1',
+      added_attendees: ['di@example.com'],
+      removed_attendee_emails: ['cy@example.com']
+    },
+    ...yes
+  });
+  const patch = sent.find((s) => s.method === 'PATCH')!;
+  assert.equal(patch.url.pathname, '/calendar/v3/calendars/primary/events/e1');
+  assert.equal(patch.url.searchParams.get('sendUpdates'), 'all');
+  assert.deepEqual(patch.body?.attendees, [
+    { email: 'reader@example.com', self: true },
+    { email: 'bo@example.com', responseStatus: 'accepted' },
+    { email: 'di@example.com' }
+  ]);
+});
+
+test('the line Oddboro adds goes in once, and the owner edits only the event itself', () => {
+  assert.equal(withEventFooter(undefined), 'Added by Oddboro: https://oddboro.com');
+  assert.equal(withEventFooter('Agenda'), 'Agenda\n\nAdded by Oddboro: https://oddboro.com');
+  assert.equal(withEventFooter(withEventFooter('Agenda')), withEventFooter('Agenda'));
+  const held = { calendar_id: 'team', event_id: 'e1', summary: 'Old', location: 'Here' };
+  assert.deepEqual(
+    ownerEdit('update_event', held, {
+      event_id: 'e2',
+      calendar_id: 'mine',
+      summary: 'New',
+      location: '',
+      added_attendees: ['ada@example.com']
+    }),
+    { calendar_id: 'team', event_id: 'e1', summary: 'New', added_attendees: ['ada@example.com'] }
+  );
+  assert.throws(() => ownerEdit('list_events', held, {}), /Only a calendar event/);
 });

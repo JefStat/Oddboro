@@ -57,8 +57,11 @@ export const GOOGLE_SCOPES: Record<GoogleProduct, string> = {
   gmail:
     'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.settings.basic',
   drive: 'https://www.googleapis.com/auth/drive',
+  // The calendar list and free/busy, events to read and write, and which
+  // account it is. Never the whole `calendar` scope, which can make and
+  // delete calendars.
   calendar:
-    'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.email'
+    'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email'
 };
 
 /** Where each Google product says which account a token reaches. */

@@ -352,7 +352,8 @@ export const GOOGLE: Record<GoogleProduct, { id: string; name: string; descripti
   calendar: {
     id: 'google-calendar',
     name: 'Google Calendar',
-    description: "Read events and check availability in the owner's Google Calendar."
+    description:
+      "Read events, check availability, and create and change events in the owner's Google Calendar."
   },
   drive: {
     id: 'google-drive',
