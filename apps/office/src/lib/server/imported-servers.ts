@@ -1,18 +1,27 @@
-// The MCP servers a hire's Claude Code agent file listed. Each web address,
-// and each name the office's tools already have, becomes an access ask at
-// read on the owner's desk, the same ask `ask_for_access` raises. Nothing is
-// granted here: the owner says yes or no to each, and a yes gives the usual
-// steps to connect it. A server that runs a command is never run or asked for.
+// The MCP servers a Claude Code agent file listed, at hire or when the owner
+// saves a changed file's instructions on an Odd it already has. Each web
+// address, and each name the office's tools already have, becomes an access
+// ask at read on the owner's desk, the same ask `ask_for_access` raises.
+// Nothing is granted here: the owner says yes or no to each, and a yes gives
+// the usual steps to connect it. A server that runs a command is never run or asked for.
 import {
+  asksFor,
   BUILT_IN,
   catalog,
+  connectorIdFor,
   ensureConnector,
   GITHUB_ADDRESS,
   GITHUB_ID,
+  grantsFor,
   raiseAsk,
   type AskRow
 } from '@oddboro/ledger';
-import { MOST_SERVERS, sortServers, type ImportedServer } from '#lib/staff/claude-agent.ts';
+import {
+  MOST_SERVERS,
+  sortServers,
+  type ImportedServer,
+  type SortedServers
+} from '#lib/staff/claude-agent.ts';
 
 /** The office's tools an agent file's server name can match: its catalog and the ones it connects itself. */
 export async function knownTools(): Promise<{ id: string; name: string }[]> {
@@ -41,21 +50,43 @@ export function serversFrom(v: unknown): ImportedServer[] {
     .filter((s) => s.name);
 }
 
-/** Raise one read access ask for each server that asks. A failed one is logged, never a failed hire. */
+/** What an ask is for, to the catalog: any address on GitHub's server is the catalog's GitHub, which signs in. */
+const wantedBy = (connector: string) => (GITHUB_ADDRESS.test(connector) ? GITHUB_ID : connector);
+
+/**
+ * A file's servers sorted for one Odd (`sortServers`). The asks leave out a
+ * tool it holds a grant for or has an open ask for, so the same file loaded
+ * again asks for nothing twice. A new Odd has neither. An open ask older than
+ * its last 30 is missed, and the desk shows the new one as its twin.
+ */
+export async function sortFor(staffId: string, servers: ImportedServer[]): Promise<SortedServers> {
+  const sorted = sortServers(servers, await knownTools());
+  if (!sorted.asks.length) return sorted;
+  const [granted, asked] = await Promise.all([grantsFor(staffId), asksFor(staffId)]);
+  const has = new Set([
+    ...granted.map((g) => g.connectorId),
+    ...asked
+      .filter((a) => a.kind === 'access' && a.status === 'open')
+      .map((a) => a.access?.connector)
+  ]);
+  return {
+    ...sorted,
+    asks: sorted.asks.filter((a) => !has.has(connectorIdFor(wantedBy(a.connector))))
+  };
+}
+
+/** Raise one read access ask for each server that asks (`sortFor`). A failed one is logged, never a failed hire or save. */
 export async function askForImported(
   staffId: string,
   odd: string,
   servers: ImportedServer[]
 ): Promise<AskRow[]> {
   if (!servers.length) return [];
-  const { asks } = sortServers(servers, await knownTools());
+  const { asks } = await sortFor(staffId, servers);
   const raised: AskRow[] = [];
   for (const s of asks) {
     try {
-      // Any address on GitHub's server is the catalog's GitHub, which signs in.
-      const found = await ensureConnector(
-        GITHUB_ADDRESS.test(s.connector) ? GITHUB_ID : s.connector
-      );
+      const found = await ensureConnector(wantedBy(s.connector));
       if (!found.connector) throw new Error(found.problem);
       const conn = found.connector;
       const { ask } = await raiseAsk(staffId, {
@@ -68,7 +99,7 @@ export async function askForImported(
       });
       raised.push(ask);
     } catch (e) {
-      console.error(`[hire] access ask for ${s.name}: ${e instanceof Error ? e.message : e}`);
+      console.error(`[agent file] access ask for ${s.name}: ${e instanceof Error ? e.message : e}`);
     }
   }
   return raised;

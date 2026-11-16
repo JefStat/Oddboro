@@ -89,6 +89,29 @@ export const staff = pgTable('staff', {
 });
 
 /**
+ * The instruction skills the owner attached to a local Odd, one SKILL.md each,
+ * by name. A run's prompt lists each name and description, and the Odd reads
+ * the text with read_skill. A skill is text only: it grants no tool, folder or
+ * permission.
+ */
+export const staffSkills = pgTable(
+  'staff_skills',
+  {
+    staffId: text()
+      .notNull()
+      .references(() => staff.id),
+    name: text().notNull(),
+    /** When to use it, in one line: the file's own, or the owner's. */
+    description: text().notNull(),
+    /** The whole SKILL.md as the owner reviewed it. */
+    text: text().notNull(),
+    createdAt: created(),
+    updatedAt: at('updated_at').notNull().defaultNow()
+  },
+  (t) => [primaryKey({ columns: [t.staffId, t.name] })]
+);
+
+/**
  * The accounts the owner added beyond each tool's Office account, which has
  * no row: a named sign-in for one coding tool, kept in its own folder
  * (`accountHome`). Odds share them.

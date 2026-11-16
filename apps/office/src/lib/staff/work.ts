@@ -112,6 +112,7 @@ export const OFFICE_TOOL_WORDS: Record<string, string> = {
   ask_for_office_tool: 'Asking you for an office tool',
   ask_for_standing_yes: 'Asking to use a tool without your yes each time',
   raise_ask: 'Raising an ask',
+  read_skill: 'Reading one of its skills',
   reconnect_access: 'Asking you to reconnect a tool',
   resume_at: 'Setting when to pick up again',
   search_ledger: 'Searching the Ledger',

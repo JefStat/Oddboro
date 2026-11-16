@@ -22,6 +22,7 @@
   import AccountSignIn from './AccountSignIn.svelte';
   import { account } from './account.svelte.ts';
   import PersonaBrief from './PersonaBrief.svelte';
+  import AgentFileServers from './AgentFileServers.svelte';
   import PersonaOffer from './PersonaOffer.svelte';
   import { connect, PersonaOffers, personas as asked } from './persona-offers.svelte.ts';
   import {
@@ -189,10 +190,9 @@
     busy = true;
     problem = '';
     try {
-      if (file.size > 256 * 1024) throw new Error('Choose an agent file smaller than 256 KB.');
-      const { readClaudeAgent, skippedSaid, sortServers } =
+      const { readClaudeAgentFile, skippedSaid, sortServers } =
         await import('../staff/claude-agent.ts');
-      const draft = readClaudeAgent(await file.text());
+      const draft = await readClaudeAgentFile(file);
       // A server named only by a name asks when the office's tools have it.
       const known = draft.servers.some((s) => s.url === undefined && s.command === undefined)
         ? (await call<{ known: { id: string; name: string }[] }>('/api/connectors')).known
@@ -561,21 +561,12 @@
 {:else}
   <section class="flex h-full min-h-0 flex-col" aria-label="Hire an Odd">
     {#if imported}
-      {@const { asks, listed } = imported.sorted}
       <div class="flex flex-col gap-1 border-b border-hairline p-3 text-xs text-ink">
-        {#if imported.skipped}<p>Not brought over: {imported.skipped}.</p>{/if}
-        {#if asks.length}
-          <p>
-            Asks you for access once hired: {asks
-              .map((a) => (a.name === a.label ? a.name : `${a.name} (${a.label})`))
-              .join(', ')}. Nothing connects until you say yes.
-          </p>
-        {/if}
-        {#if listed.length}
-          <p class="text-muted">
-            Listed only, never run: {listed.map((l) => `${l.name} (${l.why})`).join(', ')}.
-          </p>
-        {/if}
+        <AgentFileServers
+          sorted={imported.sorted}
+          once="hired"
+          note={imported.skipped && `Not brought over: ${imported.skipped}.`}
+        />
       </div>
     {/if}
     <header class="border-b border-hairline p-3">

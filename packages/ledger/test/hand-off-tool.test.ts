@@ -85,7 +85,7 @@ const said = (r: Awaited<ReturnType<Client['callTool']>>) =>
 // after a top-level await.
 
 // A goal's thread, led by Mo, that Pia (no job) and Jo (a job) serve.
-const { asks, followUps, jobs, staffGoals, tasks } = await import('../src/schema.ts');
+const { asks, followUps, jobs, staffGoals, staffSkills, tasks } = await import('../src/schema.ts');
 await db
   .insert(staff)
   .values([
@@ -675,6 +675,10 @@ test('every office tool refuses a key it does not take, and says which keys it d
   await db.insert(staffGoals).values({ staffId: 'all', goalId: fair.id, part: 'Everything' });
   // Gmail at any level offers propose_reply, and at write ask_for_standing_yes.
   await db.insert(grants).values({ staffId: 'all', connectorId: 'gmail', level: 'act' });
+  // A skill the owner attached offers read_skill.
+  await db
+    .insert(staffSkills)
+    .values({ staffId: 'all', name: 'every', description: 'Use always.', text: 'Do it.' });
   // A native conversation shared with Ada offers the project tools, in Advanced
   // mode. The owner row keeps the name every other test here reads.
   await db

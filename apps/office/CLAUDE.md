@@ -329,10 +329,10 @@ pieces under 3,900 bytes a line, so no value is on a command line.
    when lessons change (`version`).
 9. The Odd's panel has three groups, each an icon and a word (the icon
    alone when the bar is under 18rem): **Chat** (the chat alone, with no
-   row of tabs), **Data** (a files icon: Lessons and Storage) and
-   **Settings** (its own four tabs, below). A group opens on the tab it was
-   last on; the Lessons tab counts its guesses, and the Data group itself
-   shows no count. It opens on Chat. Storage
+   row of tabs), **Knowledge** (a book icon: Skills, Lessons and Storage;
+   a persona Odd has no Skills) and **Settings** (its own four tabs,
+   below). A group opens on the tab it was last on; the Lessons tab counts
+   its guesses, and the Knowledge group itself shows no count. It opens on Chat. Storage
    (`StorageTab.svelte`, what a row lists and says in `storage-list.ts`) is a tree of everything the Odd kept in its own
    folder, then, under Shared work, its part of each thread it is on (by the
    test `workFile` uses, `workTitles` in the ledger), one folder per piece of
@@ -1232,7 +1232,24 @@ pieces under 3,900 bytes a line, so no value is on a command line.
     A manual run leaves the schedule where it was, and the Office Manager's report data
     (office times) tells the two apart. The Jobs tab edits a job in place, and opens the Odd's job description
     in the document editor (`src/lib/ui/JobDescription.svelte`); a save
-    refuses if the description changed since the owner opened it. While an
+    refuses if the description changed since the owner opened it. On an Odd
+    that is not the Office Manager or a persona, the owner can open a Claude
+    agent file here to compare and edit its proposed instructions. The section
+    lists the file's servers as the hire window does (`AgentFileServers.svelte`),
+    less any tool the Odd already holds or has asked for (`sortFor`). Save
+    updates the same Odd through the description route, then raises those
+    access asks at read, as a hire does; a refused save raises none. The file's
+    tools and permission mode are never taken. A local Odd's Skills tab, under
+    Knowledge, lists the SKILL.md files the owner attached, each by name with
+    when to use it and Remove (`src/lib/ui/StaffSkills.svelte`, the ledger's
+    `staff_skills`). Add a skill reads the name and when to use it from the
+    file's front matter (`src/lib/staff/skill.ts`); the owner writes what is
+    missing, can change either, and reads the text before Save. A name already
+    saved shows the saved copy beside the new one. A save or a Remove applies
+    only while the saved copy is the one the owner saw. Every run lists each
+    skill's name and when to use it under "Your skills" (`skillsSection` in
+    `house.ts`), never its text, and the Odd reads one with the office tool
+    `read_skill`. A skill grants no tool, folder or permission. While an
     update is about to install it starts no scheduled job (item 17).
     Every job run is told the time it is for and the time it is now
     (`src/lib/server/job-brief.ts`); Run now is for the moment it is pressed. A
@@ -1266,7 +1283,8 @@ pieces under 3,900 bytes a line, so no value is on a command line.
     sentence. Each MCP server the file lists by an https address, or by a name
     the office's tools have (`knownTools`), becomes an access ask at read on the
     desk when the Odd is hired (`src/lib/server/imported-servers.ts`), so nothing
-    connects without the owner's yes. A server that runs a command is listed in
+    connects without the owner's yes. The form's lines about the file are
+    `src/lib/ui/AgentFileServers.svelte`. A server that runs a command is listed in
     the form and never run or asked for. Picking another choice clears the
     import. Step one makes the person's look
     (`src/lib/ui/LookStudio.svelte`), drawn or built. Drawn: the owner
@@ -2065,6 +2083,12 @@ the persona's voice.
   first text it shows (plain text until then), so the first page carries
   none of PixiJS, layerchart or markdown-it. Import a floor module's values only through `index.ts`; a
   type import is free.
+- Panels and dialogs that open on a click load when they open, with
+  `{#await import('…') then { default: X }}` at the render site in
+  `src/routes/+page.svelte`. Only what shows at start (the plate, the top bar,
+  the floor controls, the Odds rail, the side panel frame) is imported at the
+  top. The first run's guide loads beside the floor, and the Odd's card and the
+  Desk are fetched once after the floor draws, so they open at once.
 - Third-party packages go under `devDependencies` in `package.json`, even
   the ones the office runs: the build bundles those, and the app ships only
   what the workspace packages load (`apps/desktop/scripts/stage.ts`).

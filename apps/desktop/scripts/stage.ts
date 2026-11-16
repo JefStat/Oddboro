@@ -252,7 +252,10 @@ function prune(dir: string, rel = ''): void {
   }
 }
 
-/** 500 kB is Vite's own warning size. 0.0.5's first page loaded a 785 kB chunk (#13). */
+/**
+ * 500 kB is Vite's own warning size. 0.0.5's first page loaded a 785 kB chunk (#13).
+ * A chunk over 400 kB is a warning on the build's page, so it is seen before it fails.
+ */
 function checkChunks(dir: string): void {
   const over: string[] = [];
   const walk = (d: string) => {
@@ -260,8 +263,11 @@ function checkChunks(dir: string): void {
       const path = join(d, name);
       const s = statSync(path);
       if (s.isDirectory()) walk(path);
-      else if (name.endsWith('.js') && s.size > 500 * 1024)
-        over.push(`${path.slice(dir.length + 1)} is ${Math.round(s.size / 1024)} kB`);
+      else if (name.endsWith('.js') && s.size > 400 * 1024) {
+        const said = `${path.slice(dir.length + 1)} is ${Math.round(s.size / 1024)} kB`;
+        console.log(`::warning title=Large chunk::${said}. The stage fails over 500 kB.`);
+        if (s.size > 500 * 1024) over.push(said);
+      }
     }
   };
   walk(dir);

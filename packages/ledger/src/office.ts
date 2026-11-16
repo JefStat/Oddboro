@@ -36,6 +36,8 @@ export type LedgerRow = Omit<typeof ledger.$inferSelect, 'embedding' | 'embeddin
  */
 export { runsGoing, reserveRun, releaseRun } from './run-registry.ts';
 
+export { skillsOf, setSkill, type Skill, type SkillCopy } from './staff-skills.ts';
+
 export {
   roster,
   staffer,

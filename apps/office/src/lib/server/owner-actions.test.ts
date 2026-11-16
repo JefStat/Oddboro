@@ -472,6 +472,15 @@ const TRY: Record<Recording, (send: Send) => Promise<void>> = {
     await send({ params: { id: 'lead' }, query: { connector: p.id } });
     assert.ok(await woke(thread), 'the work parked on the connect task did not wake');
   },
+  'PUT /api/staff/[id]/skills': (send) =>
+    send({
+      params: { id: 'sam' },
+      body: {
+        name: 'invoices',
+        was: null,
+        skill: { description: 'Use for invoices.', text: 'Review the invoice total.' }
+      }
+    }),
   'PUT /api/staff/[id]/description': async (send) =>
     send({
       params: { id: 'sam' },
@@ -691,6 +700,8 @@ const QUIET: Partial<Record<Key, (send: Send) => Promise<void>>> = {
   'PUT /api/diagnostics': (send) => send({ body: { answer: 'no' } }),
   'POST /api/files/resolve': (send) =>
     send({ body: { files: [{ staff: 'sam', path: 'plan.md' }] } }),
+  'POST /api/staff/[id]/description': (send) =>
+    send({ params: { id: 'sam' }, body: { servers: [] } }),
   'POST /api/looks/parts': (send) => send({ body: { look: L.MANAGERS.find((m) => m.look)!.look } }),
   // The owner's page has no run's token, so the gateway turns it away.
   'POST /api/gateway/[connector]': (send) => send({ params: { connector: 'gmail' } }),

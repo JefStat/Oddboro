@@ -117,6 +117,11 @@ export function sortServers(
   return sorted;
 }
 
+export async function readClaudeAgentFile(file: File) {
+  if (file.size > 256 * 1024) throw new Error('Choose an agent file smaller than 256 KB.');
+  return readClaudeAgent(await file.text());
+}
+
 /** Read a Claude Code subagent file for the hire form. Only the owner grants tools. */
 export function readClaudeAgent(file: string) {
   const source = file.replace(/^﻿/, '').replaceAll('\r\n', '\n');

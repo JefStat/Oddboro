@@ -26,6 +26,7 @@ export * from './read-only.ts';
 export {
   searchRegistry,
   ensureConnector,
+  connectorIdFor,
   BUILT_IN,
   GITHUB_ADDRESS,
   GITHUB_ID,

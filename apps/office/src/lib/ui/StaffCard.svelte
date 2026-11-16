@@ -5,9 +5,7 @@
   import ChatPanel from './ChatPanel.svelte';
   import { chatRequest, type Delivered } from './chat-about.svelte.ts';
   import AccessTab from './AccessTab.svelte';
-  import LessonsTab from './LessonsTab.svelte';
   import OddInfo from './OddInfo.svelte';
-  import StorageTab from './StorageTab.svelte';
   import { lineWords, railCount, type ReaderProps } from '../staff/odd-now.ts';
   import { ACTIVITY_LABEL, type Activity, type StaffProfile } from '../staff/roster.ts';
   import type { Place, PlaceGroup } from '../staff/places.ts';
@@ -69,7 +67,7 @@
     return [...new Set(others.map((h) => h!.name))].join(' and ');
   }
   // The chat comes first: the info page is a click away, on the name.
-  type Tab = 'card' | 'send' | 'chat' | 'lessons' | 'storage' | 'access';
+  type Tab = 'card' | 'send' | 'chat' | 'skills' | 'lessons' | 'storage' | 'access';
   let tab = $state<Tab>('chat');
   /** Bumped to open the info page at In progress. */
   let toWork = $state(0);
@@ -93,9 +91,10 @@
   });
   /**
    * Three groups, each an icon and a word (the icon alone when the bar is
-   * narrow), and under Data a row of its own tabs. Chat is the chat alone,
-   * and Settings holds its own four tabs. The info page, opened from the
-   * name, sits in no group: it holds In progress and Jobs.
+   * narrow), and under Knowledge a row of its own tabs: Skills, Lessons and
+   * Storage. Chat is the chat alone, and Settings holds its own four tabs.
+   * The info page, opened from the name, sits in no group: it holds In
+   * progress, Jobs and the job description.
    */
   const GROUPS = [
     {
@@ -105,11 +104,12 @@
       tabs: [{ id: 'chat', label: 'Chat' }]
     },
     {
-      id: 'data',
-      label: 'Data',
-      // Files, one over another.
-      icon: 'M9 3h6l4 4v10a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM15 3v4h4M5 7v13a1 1 0 0 0 1 1h9',
+      id: 'knowledge',
+      label: 'Knowledge',
+      // An open book.
+      icon: 'M12 6.5C10.5 5 8 4.5 3 4.5v14c5 0 7.5.5 9 2 1.5-1.5 4-2 9-2v-14c-5 0-7.5.5-9 2zM12 6.5v14',
       tabs: [
+        { id: 'skills', label: 'Skills' },
         { id: 'lessons', label: 'Lessons' },
         { id: 'storage', label: 'Storage' }
       ]
@@ -129,6 +129,12 @@
   }[];
   type Group = (typeof GROUPS)[number];
   const group = $derived(GROUPS.find((g) => g.tabs.some((t) => t.id === tab)));
+  /** A group's tabs for this Odd. A persona's replies come from outside the office, so it has no Skills tab. */
+  function tabsOf(g: Group): readonly { id: Tab; label: string }[] {
+    const tabs: readonly { id: Tab; label: string }[] = g.tabs;
+    return profile.persona ? tabs.filter((t) => t.id !== 'skills') : tabs;
+  }
+  const tabs = $derived(group ? tabsOf(group) : []);
   /** The tab each group was last on, so going back to it lands there. */
   const last: Partial<Record<Group['id'], Tab>> = {};
   $effect(() => {
@@ -227,7 +233,7 @@
         aria-current={on ? 'page' : undefined}
         aria-label={g.label}
         title={g.label}
-        onclick={() => (tab = last[g.id] ?? g.tabs[0].id)}
+        onclick={() => (tab = last[g.id] ?? tabsOf(g)[0].id)}
       >
         <svg
           class="size-4 shrink-0"
@@ -243,12 +249,12 @@
       </button>
     {/each}
   </nav>
-  {#if group && group.tabs.length > 1}
+  {#if group && tabs.length > 1}
     <nav
       class="flex gap-1 overflow-x-auto border-b border-hairline px-1.5 py-1 text-xs"
       aria-label={group.label}
     >
-      {#each group.tabs as t (t.id)}
+      {#each tabs as t (t.id)}
         <button
           class="flex-1 rounded-full px-2 py-1 whitespace-nowrap transition-colors {tab === t.id
             ? 'bg-raise/70 text-ink'
@@ -310,10 +316,19 @@
           {/each}
         </div>
       </div>
+    {:else if tab === 'skills'}
+      <!-- The Knowledge tabs load when opened, so they stay out of the first page. -->
+      {#await import('./StaffSkills.svelte') then { default: StaffSkills }}
+        <StaffSkills staff={id} name={profile.name} />
+      {/await}
     {:else if tab === 'lessons'}
-      <LessonsTab {profile} {version} />
+      {#await import('./LessonsTab.svelte') then { default: LessonsTab }}
+        <LessonsTab {profile} {version} />
+      {/await}
     {:else if tab === 'storage'}
-      <StorageTab {profile} {version} />
+      {#await import('./StorageTab.svelte') then { default: StorageTab }}
+        <StorageTab {profile} {version} />
+      {/await}
     {:else if tab === 'access'}
       <AccessTab {profile} {version} />
     {/if}

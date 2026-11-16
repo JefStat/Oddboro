@@ -935,6 +935,12 @@ FOLDER_WARNING }` until the owner accepts it (`accept`, which `giveFolder`
   the transaction that approves the ask, so the hub's run finds it, and a
   part that fails leaves the whole plan open. Hiring one of those
   hires answers its ask on the thread, which brings the hub back again.
+- An Odd's skills (`staff_skills`, `src/staff-skills.ts`) are text the owner
+  attached, one SKILL.md each by name. Only the owner changes them, and only
+  against the copy they reviewed (`setSkill`). A run's prompt lists each name
+  and when to use it; `read_skill` (`src/mcp-skills.ts`) gives the Odd its own
+  skill's text, and is offered only while it has one (`withSkills`). A skill
+  grants nothing.
 - An Odd sees only the goals it serves (`staff_goals`): `my_goals` and its
   prompt read `goalsFor`, never `allGoals`. `log_progress` takes a goal it
   serves or whose thread it leads (`logProgress`), so the lead planning a goal
@@ -988,7 +994,7 @@ FOLDER_WARNING }` until the owner accepts it (`accept`, which `giveFolder`
     its row in `GOAL_IS_LIVE` (`src/goal-words.ts`).
   - To add an office tool, start at its row in `OFFICE_TOOLS` in
     `src/tools.ts`; a tool registered beside it goes in `RIDES_WITH`. When
-    it is offered (`withGmail`, `withWrite`, `inChat`, `notToManager`, and `prompt` for
+    it is offered (`withGmail`, `withWrite`, `withSkills`, `inChat`, `notToManager`, and `prompt` for
     one that only shapes the prompt and is never offered) is a field on its
     row, which `isOffered` in `src/tools.ts` reads for the tool server
     (`offered()` in `mcp-run.ts`), the Settings tab's Always on group

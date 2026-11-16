@@ -6,7 +6,7 @@
   import type { Floor } from '#lib/floor/engine.ts';
   import type { StaffActor, Pop } from '#lib/floor/staff.ts';
   import type { Beat } from '#lib/floor/reveal.ts';
-  import Onboarding, { type Stage } from '#lib/ui/onboarding/Onboarding.svelte';
+  import type { Stage } from '#lib/ui/onboarding/Onboarding.svelte';
   import FloorControls, { type Light } from '#lib/ui/FloorControls.svelte';
   import { music, musicEnded, startMusic } from '#lib/ui/music.svelte.ts';
   import { chatAbout } from '#lib/ui/chat-about.svelte.ts';
@@ -22,28 +22,15 @@
     tagWords,
     type Snapshot
   } from '#lib/staff/odd-now.ts';
-  import StaffCard from '#lib/ui/StaffCard.svelte';
   import { chatRequest, type Delivered } from '#lib/ui/chat-about.svelte.ts';
   import OddsRail, { ODDS_RAIL, ODDS_RAIL_OPEN } from '#lib/ui/OddsRail.svelte';
   import type { Work } from '#lib/staff/work.ts';
   import type { LessonEvent, OfficeEvent } from '#lib/server/events.ts';
-  import DeskDrawer from '#lib/ui/DeskDrawer.svelte';
   import { account } from '#lib/ui/account.svelte.ts';
   import { personaNews } from '#lib/ui/persona-offers.svelte.ts';
   import { diagnostics } from '#lib/ui/diagnostics.svelte.ts';
-  import LedgerPanel from '#lib/ui/LedgerPanel.svelte';
-  import ServicesPanel from '#lib/ui/ServicesPanel.svelte';
   import { serviceNames } from '#lib/ui/service-names.svelte.ts';
-  import GoalsPanel from '#lib/ui/GoalsPanel.svelte';
-  import LessonsLibrary from '#lib/ui/LessonsLibrary.svelte';
-  import Welcome from '#lib/ui/Welcome.svelte';
   import RestoredNote from '#lib/ui/RestoredNote.svelte';
-  import ProjectSessions from '#lib/ui/ProjectSessions.svelte';
-  import HireDrawer from '#lib/ui/HireDrawer.svelte';
-  import FileViewer from '#lib/ui/FileViewer.svelte';
-  import ReportView from '#lib/ui/ReportView.svelte';
-  import ActCheck from '#lib/ui/ActCheck.svelte';
-  import HandOffChoice from '#lib/ui/HandOffChoice.svelte';
   import { actCheck } from '#lib/ui/act-check.svelte.ts';
   import {
     advanced,
@@ -65,6 +52,13 @@
   import { call, type ApiUrl } from '#lib/ui/api.ts';
   import { setZone, zone, zoneName, zoneShort } from '@oddboro/ledger/time';
   import { LIVE_TABLES, type LiveTable } from '@oddboro/ledger/live-tables';
+
+  // Panels and dialogs that open on a click load when they open, so the first
+  // page carries only what shows at start. These three load early as well: the
+  // first run's guide beside the floor, and the card and the Desk once it draws.
+  const loadOnboarding = () => import('#lib/ui/onboarding/Onboarding.svelte');
+  const loadStaffCard = () => import('#lib/ui/StaffCard.svelte');
+  const loadDeskDrawer = () => import('#lib/ui/DeskDrawer.svelte');
 
   let { data } = $props();
   // Every time on the page is in the office's zone, which only the server knows.
@@ -764,6 +758,8 @@
       if (page.includes('ledger')) ledgerVersion++;
     };
 
+    // The first run's guide shows as soon as the floor does, so fetch both at once.
+    if (firstRun) loadOnboarding().catch(() => {});
     (async () => {
       try {
         F = await import('#lib/floor/index.ts');
@@ -879,6 +875,13 @@
         });
         ready = true;
         floorReady = true;
+        // The card and the Desk are the panels opened most. Fetch them once,
+        // after the floor is up, so they open at once. A failed fetch here
+        // stays quiet: it is only a head start.
+        setTimeout(() => {
+          loadStaffCard().catch(() => {});
+          loadDeskDrawer().catch(() => {});
+        }, 0);
       } catch (e) {
         failed = e instanceof Error ? e.message : String(e);
       }
@@ -1279,7 +1282,9 @@
       <div class="flex h-full min-h-0 flex-col">
         {@render plate(true)}
         {#if floorReady}
-          <Onboarding {stage} sample={data.sample} />
+          {#await loadOnboarding() then { default: Onboarding }}
+            <Onboarding {stage} sample={data.sample} />
+          {/await}
         {/if}
         <div class="mt-auto border-t border-hairline px-3 py-2">
           <FloorControls bind:light onfit={fitFloor} onzoom={(d) => floor?.zoomBy(d)} />
@@ -1336,39 +1341,54 @@
         <div class="min-h-0 flex-1 border-t border-hairline">
           {#each wins.list as w (w.id)}
             <div class="h-full min-h-0" class:hidden={wins.active !== w.id} role="tabpanel">
+              <!-- Each window's code loads when it first opens. -->
               {#if w.kind === 'desk'}
-                <DeskDrawer
-                  {desk}
-                  {staff}
-                  focus={deskFocus}
-                  onhire={hireProposal}
-                  onplan={planHires}
-                  onstaff={select}
-                />
+                {#await loadDeskDrawer() then { default: DeskDrawer }}
+                  <DeskDrawer
+                    {desk}
+                    {staff}
+                    focus={deskFocus}
+                    onhire={hireProposal}
+                    onplan={planHires}
+                    onstaff={select}
+                  />
+                {/await}
               {:else if w.kind === 'goals'}
-                <GoalsPanel {staff} {version} onthread={openThread} />
+                {#await import('#lib/ui/GoalsPanel.svelte') then { default: GoalsPanel }}
+                  <GoalsPanel {staff} {version} onthread={openThread} />
+                {/await}
               {:else if w.kind === 'lessons'}
-                <LessonsLibrary {staff} {version} bind:filter={w.filter} />
+                {#await import('#lib/ui/LessonsLibrary.svelte') then { default: LessonsLibrary }}
+                  <LessonsLibrary {staff} {version} bind:filter={w.filter} />
+                {/await}
               {:else if w.kind === 'ledger'}
-                <LedgerPanel {staff} version={ledgerVersion} />
+                {#await import('#lib/ui/LedgerPanel.svelte') then { default: LedgerPanel }}
+                  <LedgerPanel {staff} version={ledgerVersion} />
+                {/await}
               {:else if w.kind === 'projects'}
-                <ProjectSessions {staff} {version} ask={w.ask} />
+                {#await import('#lib/ui/ProjectSessions.svelte') then { default: ProjectSessions }}
+                  <ProjectSessions {staff} {version} ask={w.ask} />
+                {/await}
               {:else if w.kind === 'services'}
-                <ServicesPanel {staff} {version} onstaff={select} />
+                {#await import('#lib/ui/ServicesPanel.svelte') then { default: ServicesPanel }}
+                  <ServicesPanel {staff} {version} onstaff={select} />
+                {/await}
               {:else if w.kind === 'setup'}
-                <Welcome
-                  office={office.name}
-                  {welcomed}
-                  ondesign={() => open({ id: 'office', kind: 'office' })}
-                  onhire={() => openHire()}
-                  onmeet={(id) => select(id)}
-                  ondone={() => {
-                    welcomed = true;
-                    close(w.id, true);
-                  }}
-                  {notify}
-                  onnotify={setNotify}
-                />
+                {#await import('#lib/ui/Welcome.svelte') then { default: Welcome }}
+                  <Welcome
+                    office={office.name}
+                    {welcomed}
+                    ondesign={() => open({ id: 'office', kind: 'office' })}
+                    onhire={() => openHire()}
+                    onmeet={(id) => select(id)}
+                    ondone={() => {
+                      welcomed = true;
+                      close(w.id, true);
+                    }}
+                    {notify}
+                    onnotify={setNotify}
+                  />
+                {/await}
               {:else if w.kind === 'office'}
                 <!-- Loaded when opened: it draws with PixiJS, which the first page leaves out. -->
                 {#await import('#lib/ui/OfficeDesigner.svelte') then { default: OfficeDesigner }}
@@ -1380,28 +1400,34 @@
                   />
                 {/await}
               {:else if w.kind === 'hire'}
-                <HireDrawer
-                  id={w.id}
-                  rooms={hireRooms}
-                  from={w.from}
-                  onhired={(p) => {
-                    close(w.id, true);
-                    refresh();
-                    select(p.id);
-                  }}
-                  ondone={() => {
-                    close(w.id, true);
-                    refresh();
-                  }}
-                />
+                {#await import('#lib/ui/HireDrawer.svelte') then { default: HireDrawer }}
+                  <HireDrawer
+                    id={w.id}
+                    rooms={hireRooms}
+                    from={w.from}
+                    onhired={(p) => {
+                      close(w.id, true);
+                      refresh();
+                      select(p.id);
+                    }}
+                    ondone={() => {
+                      close(w.id, true);
+                      refresh();
+                    }}
+                  />
+                {/await}
               {:else if w.kind === 'report'}
-                <ReportView report={w.report} {staff} />
+                {#await import('#lib/ui/ReportView.svelte') then { default: ReportView }}
+                  <ReportView report={w.report} {staff} />
+                {/await}
               {:else}
-                <FileViewer
-                  id={w.id}
-                  file={w.file}
-                  nameOf={(id) => staff.find((p) => p.id === id)?.name ?? id}
-                />
+                {#await import('#lib/ui/FileViewer.svelte') then { default: FileViewer }}
+                  <FileViewer
+                    id={w.id}
+                    file={w.file}
+                    nameOf={(id) => staff.find((p) => p.id === id)?.name ?? id}
+                  />
+                {/await}
               {/if}
             </div>
           {/each}
@@ -1481,24 +1507,26 @@
     >
       {#key profile.id}
         <div class="h-full" in:fly={fromEdge()}>
-          <StaffCard
-            {...readerProps(snapshot, oddsNow, profile.id, planHires)}
-            {profile}
-            activity={selectedActivity}
-            {version}
-            show={cardShow?.id === profile.id ? cardShow : undefined}
-            {places}
-            manual={!!manual[profile.id]}
-            sentTo={manual[profile.id]}
-            {held}
-            onsend={(place) => send(profile.id, place)}
-            onschedule={() => backToSchedule(profile.id)}
-            onchatstart={() => chatStart(profile.id)}
-            onchatend={() => chatEnd(profile.id)}
-            oncollapse={() => (rightCollapsed = true)}
-            onclose={() => select(undefined)}
-            onitem={(d) => openDelivered(profile.id, d)}
-          />
+          {#await loadStaffCard() then { default: StaffCard }}
+            <StaffCard
+              {...readerProps(snapshot, oddsNow, profile.id, planHires)}
+              {profile}
+              activity={selectedActivity}
+              {version}
+              show={cardShow?.id === profile.id ? cardShow : undefined}
+              {places}
+              manual={!!manual[profile.id]}
+              sentTo={manual[profile.id]}
+              {held}
+              onsend={(place) => send(profile.id, place)}
+              onschedule={() => backToSchedule(profile.id)}
+              onchatstart={() => chatStart(profile.id)}
+              onchatend={() => chatEnd(profile.id)}
+              oncollapse={() => (rightCollapsed = true)}
+              onclose={() => select(undefined)}
+              onitem={(d) => openDelivered(profile.id, d)}
+            />
+          {/await}
         </div>
       {/key}
     </SidePanel>
@@ -1522,8 +1550,14 @@
       </div>
     </div>
   {/if}
-  {#if actCheck.asking}<ActCheck />{/if}
-  {#if actCheck.choosing}<HandOffChoice name={actCheck.choosing} />{/if}
+  {#if actCheck.asking}
+    {#await import('#lib/ui/ActCheck.svelte') then { default: ActCheck }}<ActCheck />{/await}
+  {/if}
+  {#if actCheck.choosing}
+    {#await import('#lib/ui/HandOffChoice.svelte') then { default: HandOffChoice }}
+      <HandOffChoice name={actCheck.choosing} />
+    {/await}
+  {/if}
 </main>
 
 <style>

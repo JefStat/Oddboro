@@ -36,6 +36,7 @@ import {
 import { home, isOfficeFile, isWhereNamed } from './home.ts';
 import { trustSystemCertificates } from './certificates.ts';
 import { advancedMode, projectConnections } from './project-sessions.ts';
+import { skillsOf } from './staff-skills.ts';
 
 trustSystemCertificates();
 const ME = process.env.STAFF_ID ?? '';
@@ -75,6 +76,7 @@ const RUN: ToolRun = {
     (await advancedMode()) &&
     (await projectConnections(ME)).length > 0,
   write: held.some((g) => g.level === 'act'),
+  skills: (await skillsOf(ME)).length > 0,
   chat: OWNER_SAID !== undefined,
   manager: me.role === MANAGER_ROLE
 };

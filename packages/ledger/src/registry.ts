@@ -207,6 +207,13 @@ export type WayIn = { keyHeader?: string };
 const byAddress = (url: string, way: WayIn): ConnectorConfig =>
   way.keyHeader ? { url, headers: [way.keyHeader], oauth: false } : { url, oauth: true };
 
+/** The catalog id `ensureConnector` finds or gives `wanted`: an id as it is, or a hosted server's by its https address. */
+export function connectorIdFor(wanted: string): string {
+  const url = /^https:\/\/\S+$/.test(wanted) ? new URL(wanted) : undefined;
+  if (!url) return wanted;
+  return url.href === POSTAL_URL ? POSTAL_ID : connectorId(`${url.hostname}${url.pathname}`);
+}
+
 /**
  * A catalog connector by id, or a registry server added to the catalog by its
  * name, or a hosted server by its https address. `way` says how a server named
@@ -221,14 +228,8 @@ export async function ensureConnector(
     return {
       problem: `"${way.keyHeader}" is not a header name. Use letters, digits and dashes, like x-api-key.`
     };
-  const isUrl = /^https:\/\/\S+$/.test(wanted);
-  const url = isUrl ? new URL(wanted) : undefined;
-  const id =
-    url?.href === POSTAL_URL
-      ? POSTAL_ID
-      : url
-        ? connectorId(`${url.hostname}${url.pathname}`)
-        : wanted;
+  const url = /^https:\/\/\S+$/.test(wanted) ? new URL(wanted) : undefined;
+  const id = connectorIdFor(wanted);
   const own = await connector(id);
   if (own) {
     // One named by its address and not connected yet takes the way in asked for now.

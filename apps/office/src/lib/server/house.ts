@@ -31,6 +31,25 @@ export function stillOnDeskSection(desk: {
   ].join('\n');
 }
 
+/**
+ * The skills the owner attached to this Odd: each one's name and when to use
+ * it, one line each. The text stays out, and the Odd reads it with read_skill,
+ * which a run is offered exactly when this list has a skill. Nothing when
+ * there is none.
+ */
+export function skillsSection(skills: { name: string; description: string }[]): string {
+  if (!skills.length) return '';
+  return [
+    '',
+    '## Your skills',
+    '',
+    'Before you follow one of these skills, call read_skill with its name to get its full instructions.',
+    '',
+    ...skills.map((s) => `- ${s.name}: ${s.description}`),
+    ''
+  ].join('\n');
+}
+
 /** The manager's current job on every run, including hires whose saved desk predates it. */
 export function managerWork(pending: boolean): string {
   return [

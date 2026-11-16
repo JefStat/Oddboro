@@ -89,6 +89,7 @@ import {
   setPlanLimits,
   settingsTab,
   STAFF_SERVER,
+  skillsOf,
   staffer,
   stageOf,
   standsFor,
@@ -158,7 +159,14 @@ import { firstDayOf } from './first-day.ts';
 import { followUpBrief, waitEnded } from './follow-up-brief.ts';
 import { closeGateway, openGateway } from './gateway.ts';
 import { runEndLine } from './health.ts';
-import { ACT_WRITE, house, managerWork, stillOnDeskSection, whoIsHereSection } from './house.ts';
+import {
+  ACT_WRITE,
+  house,
+  managerWork,
+  skillsSection,
+  stillOnDeskSection,
+  whoIsHereSection
+} from './house.ts';
 import { NOT_SIGNED_IN, SIGN_IN_WHERE, type McpServer, type RunImage } from './launch.ts';
 import { notifyMac } from './notify.ts';
 import { OUTCOME_LINE, personaRun, voiced } from './persona-run.ts';
@@ -493,6 +501,7 @@ async function prompt(
   return (
     who.desk +
     '\n' +
+    skillsSection(await skillsOf(who.id)) +
     (await whoFor(who, dir)) +
     (hasTool(who.tools, 'see_office')
       ? whoIsHereSection(

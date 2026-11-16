@@ -321,7 +321,8 @@ Every update is required. `src-tauri/src/update.rs` runs them with
   third-party package under `dependencies` that `UNBUNDLED` does not name
   (Sentry's two): its build bundles the rest, so they belong in
   `devDependencies` (0.0.5 shipped 16,000 files of them, #13). It fails if
-  any page chunk is over 500 kB. It fetches the Node
+  any page chunk is over 500 kB, and prints a GitHub Actions warning for
+  one over 400 kB. It fetches the Node
   binary for this machine's Node version, system and chip, and checks it
   against nodejs.org's sums (Windows's comes as a zip, unpacked with
   Windows's own `tar`). `scripts/smoke.ts --stage` then checks the stage.
