@@ -17,7 +17,6 @@
   import SelectToChat from './SelectToChat.svelte';
   import ReplyReview from './ReplyReview.svelte';
   import FilterReview from './FilterReview.svelte';
-  import EventReview from './EventReview.svelte';
   import FolderAsk from './FolderAsk.svelte';
   import FolderWarning from './FolderWarning.svelte';
   import { call } from './api.ts';
@@ -490,16 +489,20 @@
       {/key}
     {:else if open.kind === 'ask' && open.row.kind === 'call' && open.row.call?.event}
       {@const a = open.row}
-      {#key a.id}
-        <EventReview
-          ask={{ ...a, call: { ...open.row.call, event: open.row.call.event } }}
-          {events}
-          {staff}
-          {reworks}
-          ongo={(id) => go(id === undefined ? undefined : `ask-${id}`)}
-          {onstaff}
-        />
-      {/key}
+      {@const event = open.row.call.event}
+      <!-- The event card loads when an event opens, so the page loads without it. -->
+      {#await import('./EventReview.svelte') then { default: EventReview }}
+        {#key a.id}
+          <EventReview
+            ask={{ ...a, call: { ...a.call!, event } }}
+            {events}
+            {staff}
+            {reworks}
+            ongo={(id) => go(id === undefined ? undefined : `ask-${id}`)}
+            {onstaff}
+          />
+        {/key}
+      {/await}
     {:else}
       {@const from = who(open.row.staffId)}
       {@const via = viaOf(open)}
