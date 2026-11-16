@@ -500,7 +500,7 @@
           {@render icon('clock')}
           <div class="flex min-w-0 flex-col gap-2">
             <div
-              class="grid grid-cols-[minmax(0,1fr)_7.25rem] items-center gap-2 @sm:grid-cols-[2.5rem_minmax(0,1fr)_7.25rem]"
+              class="grid grid-cols-[minmax(0,1fr)_8rem] items-center gap-2 @sm:grid-cols-[2.5rem_minmax(0,1fr)_8rem]"
             >
               <span class="hidden text-xs text-muted @sm:block">Starts</span>
               <input
