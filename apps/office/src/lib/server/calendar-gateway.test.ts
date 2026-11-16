@@ -57,6 +57,20 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   });
   if (method === 'GET' && url.includes('/events/'))
     return Response.json({ summary: 'Team lunch', attendees: onEvent });
+  if (url.includes('/calendarList'))
+    return Response.json({
+      items: [
+        {
+          id: OWNER,
+          summary: OWNER,
+          primary: true,
+          accessRole: 'owner',
+          backgroundColor: '#9fe1e7'
+        },
+        { id: 'team@group.calendar.google.com', summary: 'Team', accessRole: 'writer' }
+      ]
+    });
+  if (url.includes('/colors')) return Response.json({ event: { '7': { background: '#46d6db' } } });
   return Response.json({ id: 'ev-1' });
 }) as typeof fetch;
 
@@ -165,7 +179,8 @@ test('at Draft an event with no guests waits on the desk, with the line Oddboro 
   }
   const [held] = await callsOf('cara');
   assert.equal(held.title, `Add "Lunch" to the calendar in ${(await calendar()).name}`);
-  assert.deepEqual(held.call.event, { account: OWNER, others: [] });
+  assert.equal(held.call.event?.account, OWNER);
+  assert.deepEqual(held.call.event?.others, []);
   assert.equal(held.call.arguments.description, 'Added by Oddboro: https://oddboro.com');
   assert.equal(held.call.arguments.oddboro_title, undefined);
 });
@@ -227,7 +242,24 @@ test('at Act an event with guests waits on the desk, and goes as the owner left 
   }
   const [held] = await callsOf('abe');
   assert.match(held.title, /^Invite 2 people to "Lunch"/);
-  assert.deepEqual(held.call.event, { account: OWNER, others: [] });
+  // The calendars to pick from and Google's colours come as it is held, so the card never calls Google.
+  assert.deepEqual(
+    held.call.event?.calendars?.map((c) => c.id),
+    [OWNER, 'team@group.calendar.google.com']
+  );
+  assert.equal(held.call.event?.calendars?.[0].color, '#9fe1e7');
+  assert.deepEqual(held.call.event?.colors, { '7': '#46d6db' });
+
+  // A calendar the desk did not offer is refused, and nothing reaches Google.
+  google.length = 0;
+  await assert.rejects(
+    request('/api/asks/[id]/call', 'POST', {
+      params: { id: String(held.id) },
+      body: { arguments: { summary: 'Team lunch', calendar_id: 'other@group.calendar.google.com' } }
+    }),
+    { status: 400 }
+  );
+  assert.equal(writes().length, 0);
 
   google.length = 0;
   const res = await request('/api/asks/[id]/call', 'POST', {
@@ -237,8 +269,8 @@ test('at Act an event with guests waits on the desk, and goes as the owner left 
         summary: 'Team lunch',
         attendees: ['ada@example.com'],
         description: 'At noon.',
-        // The owner never moves the call to another calendar or event.
-        calendar_id: 'other@group.calendar.google.com',
+        // The owner may pick another of the account's calendars.
+        calendar_id: 'team@group.calendar.google.com',
         start_time: '2026-11-20T12:30:00',
         end_time: '2026-11-20T13:30:00',
         time_zone: 'America/Los_Angeles'
@@ -247,7 +279,7 @@ test('at Act an event with guests waits on the desk, and goes as the owner left 
   });
   assert.equal(res.status, 200);
   const [made] = writes();
-  assert.equal(made.url.pathname, '/calendar/v3/calendars/primary/events');
+  assert.equal(made.url.pathname, '/calendar/v3/calendars/team%40group.calendar.google.com/events');
   assert.equal(made.url.searchParams.get('sendUpdates'), 'all');
   assert.equal(made.body?.summary, 'Team lunch');
   assert.deepEqual(made.body?.attendees, [{ email: 'ada@example.com' }]);
@@ -291,10 +323,57 @@ test('at Act a change to an event with guests on it waits too, and a change to o
     onEvent = [];
   }
   const held = (await callsOf('abe')).at(-1)!;
-  assert.deepEqual(held.call.event, {
-    account: OWNER,
-    now: 'Team lunch',
-    others: ['bo@example.com']
+  const { account, now, others, before } = held.call.event!;
+  assert.deepEqual(
+    { account, now, others },
+    {
+      account: OWNER,
+      now: 'Team lunch',
+      others: ['bo@example.com']
+    }
+  );
+  // The event as it stood goes with it, for the card to show.
+  assert.deepEqual(
+    before?.attendees?.map((a) => a.email),
+    [OWNER, 'bo@example.com']
+  );
+  assert.match(held.title, /^Change "Team lunch" and email 1 person/);
+});
+
+test("at Act the owner's own reminders and colour on an event with guests go at once, and email nobody", async () => {
+  const { token } = openGateway([{ connector: await calendar(), level: 'act' }], 60_000, {
+    staffId: 'abe',
+    run: 'run-abe-4'
   });
-  assert.match(held.title, /^Change an event and email 1 person/);
+  const client = await connect(token);
+  const before = (await callsOf('abe')).length;
+  try {
+    onEvent = [{ email: OWNER, self: true }, { email: 'bo@example.com' }];
+    google.length = 0;
+    const r = await client.callTool({
+      name: 'update_event',
+      arguments: {
+        event_id: 'ev1',
+        reminders: { use_default: false, overrides: [{ method: 'popup', minutes: 15 }] },
+        color_id: '7'
+      }
+    });
+    assert.notEqual(r.isError, true, said(r).join());
+    const [made] = writes();
+    assert.equal(made.method, 'PATCH');
+    assert.equal(made.url.searchParams.get('sendUpdates'), 'none');
+    // A Meet call is something the guests see: it waits.
+    google.length = 0;
+    const meet = await client.callTool({
+      name: 'update_event',
+      arguments: { event_id: 'ev1', google_meet: true, ...words }
+    });
+    assert.match(said(meet)[0], /^Held for/);
+    assert.equal(writes().length, 0);
+  } finally {
+    await client.close();
+    await closeGateway(token);
+    onEvent = [];
+  }
+  assert.equal((await callsOf('abe')).length, before + 1);
 });

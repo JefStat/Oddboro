@@ -346,7 +346,7 @@ async function hold(
         tool: name,
         arguments: event?.args ?? args,
         ...(read ? { said: read.title, shown: read.items } : {}),
-        ...(event ? { said: event.said, event: event.event } : {}),
+        ...(event ? { said: event.said, event: await event.view() } : {}),
         ...(before.length ? { before } : {})
       },
       c.name,

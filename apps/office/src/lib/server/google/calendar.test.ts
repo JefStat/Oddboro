@@ -212,15 +212,348 @@ test('the line Oddboro adds goes in once, and the owner edits only the event its
   assert.equal(withEventFooter('Agenda'), 'Agenda\n\nAdded by Oddboro: https://oddboro.com');
   assert.equal(withEventFooter(withEventFooter('Agenda')), withEventFooter('Agenda'));
   const held = { calendar_id: 'team', event_id: 'e1', summary: 'Old', location: 'Here' };
+  const event = {
+    others: [],
+    calendars: [
+      { id: 'team', name: 'Team' },
+      { id: 'home', name: 'Home' }
+    ]
+  };
+  // An emptied place is the owner's: no place. Which event never changes.
   assert.deepEqual(
-    ownerEdit('update_event', held, {
-      event_id: 'e2',
-      calendar_id: 'mine',
+    ownerEdit(
+      'update_event',
+      held,
+      {
+        event_id: 'e2',
+        calendar_id: 'mine',
+        summary: 'New',
+        location: '',
+        added_attendees: ['ada@example.com'],
+        move_to_calendar_id: 'home'
+      },
+      event
+    ),
+    {
+      calendar_id: 'team',
+      event_id: 'e1',
       summary: 'New',
       location: '',
-      added_attendees: ['ada@example.com']
-    }),
-    { calendar_id: 'team', event_id: 'e1', summary: 'New', added_attendees: ['ada@example.com'] }
+      added_attendees: ['ada@example.com'],
+      move_to_calendar_id: 'home'
+    }
+  );
+  // A new event may go on any calendar the desk offered, and no other.
+  assert.equal(
+    ownerEdit('create_event', { summary: 'x' }, { calendar_id: 'home' }, event).calendar_id,
+    'home'
+  );
+  assert.throws(
+    () => ownerEdit('create_event', { summary: 'x' }, { calendar_id: 'someone-else' }, event),
+    /calendars the desk offers/
   );
   assert.throws(() => ownerEdit('list_events', held, {}), /Only a calendar event/);
+});
+
+/**
+ * Google as a store of events by ID: a GET reads one, a PATCH changes it, a
+ * POST makes one, and every call is kept with its body.
+ */
+function store(t: TestContext, held: Record<string, Record<string, unknown>>) {
+  const sent: { method: string; url: URL; body?: Record<string, unknown> }[] = [];
+  let made = 0;
+  t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit = {}) => {
+    const method = init.method ?? 'GET';
+    const u = new URL(url);
+    const body = typeof init.body === 'string' ? JSON.parse(init.body) : undefined;
+    sent.push({ method, url: u, body });
+    const [, eventId, more] = /\/events\/([^/]+)(?:\/(\w+))?$/.exec(u.pathname) ?? [];
+    if (more === 'instances')
+      return Response.json({ items: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] });
+    if (method === 'GET' && eventId)
+      return held[eventId] ? Response.json(held[eventId]) : new Response('{}', { status: 404 });
+    if (method === 'PATCH') return Response.json({ id: eventId, ...held[eventId], ...body });
+    if (more === 'move') return Response.json({ id: eventId });
+    return Response.json({ id: `new-${++made}` });
+  });
+  return sent;
+}
+const writesOf = (sent: ReturnType<typeof store>) => sent.filter((s) => s.method !== 'GET');
+
+test('a new event carries everything Google Calendar offers, and Meet goes with conferenceDataVersion=1', async (t) => {
+  const sent = store(t, {});
+  const r = await client.callTool({
+    name: 'create_event',
+    arguments: {
+      summary: 'Flight',
+      start_time: '2026-11-20T10:00:00',
+      end_time: '2026-11-20T18:00:00',
+      time_zone: 'America/Los_Angeles',
+      end_time_zone: 'America/New_York',
+      recurrence: ['RRULE:FREQ=WEEKLY;BYDAY=FR;COUNT=4'],
+      reminders: { use_default: false, overrides: [{ method: 'email', minutes: 1440 }] },
+      google_meet: true,
+      show_as: 'free',
+      visibility: 'private',
+      guests_can_modify: true,
+      guests_can_invite_others: false,
+      color_id: '7',
+      attachments: [{ file_id: '1AbCdEfGhIjKlMnOpQrStUvWx', title: 'Boarding pass.pdf' }],
+      attendees: [OWN_ADDRESS]
+    }
+  });
+  assert.notEqual(r.isError, true, JSON.stringify(r.content));
+  const [made] = writesOf(sent);
+  const q = made.url.searchParams;
+  assert.equal(q.get('sendUpdates'), 'none');
+  assert.equal(q.get('conferenceDataVersion'), '1');
+  assert.equal(q.get('supportsAttachments'), 'true');
+  const b = made.body!;
+  assert.deepEqual(b.end, { dateTime: '2026-11-20T18:00:00', timeZone: 'America/New_York' });
+  assert.deepEqual(b.recurrence, ['RRULE:FREQ=WEEKLY;BYDAY=FR;COUNT=4']);
+  assert.deepEqual(b.reminders, {
+    useDefault: false,
+    overrides: [{ method: 'email', minutes: 1440 }]
+  });
+  const conference = b.conferenceData as { createRequest: Record<string, unknown> };
+  assert.deepEqual(conference.createRequest.conferenceSolutionKey, { type: 'hangoutsMeet' });
+  assert.match(String(conference.createRequest.requestId), /^[\w-]{36}$/);
+  assert.equal(b.transparency, 'transparent');
+  assert.equal(b.visibility, 'private');
+  assert.equal(b.guestsCanModify, true);
+  assert.equal(b.guestsCanInviteOthers, false);
+  assert.equal(b.guestsCanSeeOtherGuests, undefined);
+  assert.equal(b.colorId, '7');
+  assert.deepEqual(b.attachments, [
+    {
+      fileUrl: 'https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWx/view?usp=drivesdk',
+      title: 'Boarding pass.pdf'
+    }
+  ]);
+  // An optional guest is still a guest, and still waits for the click.
+  const optional = await client.callTool({
+    name: 'create_event',
+    arguments: { ...lunch, attendees: [{ email: 'ada@example.com', optional: true }] }
+  });
+  assert.equal(optional.isError, true);
+  await client.callTool({
+    name: 'create_event',
+    arguments: {
+      ...lunch,
+      attendees: [{ email: 'ada@example.com', optional: true }, 'cy@example.com']
+    },
+    ...yes
+  });
+  assert.deepEqual(writesOf(sent)[1].body?.attendees, [
+    { email: 'ada@example.com', optional: true },
+    { email: 'cy@example.com' }
+  ]);
+  const notDrive = await client.callTool({
+    name: 'create_event',
+    arguments: { ...lunch, attachments: [{ file_url: 'https://example.com/a.pdf' }] }
+  });
+  assert.equal(notDrive.isError, true);
+});
+
+const OWN_ADDRESS = 'reader@example.com';
+const guests = [
+  { email: OWN_ADDRESS, self: true, organizer: true, responseStatus: 'accepted' },
+  { email: 'ada@example.com', responseStatus: 'accepted' },
+  { email: 'bo@example.com', optional: true }
+];
+/** A weekly series on Fridays at 10 in Los Angeles, with a Zoom call, and its third Friday. */
+const weekly = {
+  id: 'series',
+  summary: 'Planning',
+  start: { dateTime: '2026-11-06T10:00:00-08:00', timeZone: 'America/Los_Angeles' },
+  end: { dateTime: '2026-11-06T11:00:00-08:00', timeZone: 'America/Los_Angeles' },
+  recurrence: [
+    'RRULE:FREQ=WEEKLY;COUNT=10;BYDAY=FR',
+    'EXDATE;TZID=America/Los_Angeles:20261127T100000'
+  ],
+  attendees: guests,
+  conferenceData: {
+    conferenceId: 'zoom-1',
+    conferenceSolution: { key: { type: 'addOn' }, name: 'Zoom Meeting' },
+    entryPoints: [{ entryPointType: 'video', uri: 'https://zoom.example.com/j/1' }]
+  },
+  reminders: { useDefault: true }
+};
+const third = {
+  id: 'series_20261120T180000Z',
+  recurringEventId: 'series',
+  summary: 'Planning',
+  originalStartTime: { dateTime: '2026-11-20T10:00:00-08:00', timeZone: 'America/Los_Angeles' },
+  start: { dateTime: '2026-11-20T10:00:00-08:00', timeZone: 'America/Los_Angeles' },
+  end: { dateTime: '2026-11-20T11:00:00-08:00', timeZone: 'America/Los_Angeles' },
+  attendees: guests
+};
+
+test('an occurrence of a repeating event needs a scope, and "this event" changes it alone', async (t) => {
+  const sent = store(t, { series: weekly, [third.id]: third });
+  const bare = await client.callTool({
+    name: 'update_event',
+    arguments: { event_id: third.id, reminders: { use_default: true } }
+  });
+  assert.equal(bare.isError, true);
+  assert.match(JSON.stringify(bare.content), /scope/);
+  // Reminders alone: only the owner sees them, so a run makes it and nobody is emailed.
+  const mine = await client.callTool({
+    name: 'update_event',
+    arguments: {
+      event_id: third.id,
+      scope: 'this',
+      reminders: { use_default: false, overrides: [{ method: 'popup', minutes: 30 }] },
+      color_id: '11'
+    }
+  });
+  assert.notEqual(mine.isError, true, JSON.stringify(mine.content));
+  assert.match(JSON.stringify(mine.content), /Nobody was emailed/);
+  const [patch] = writesOf(sent);
+  assert.equal(patch.url.pathname, `/calendar/v3/calendars/primary/events/${third.id}`);
+  assert.equal(patch.url.searchParams.get('sendUpdates'), 'none');
+  // Anything the guests see waits for the owner's click.
+  const place = await client.callTool({
+    name: 'update_event',
+    arguments: { event_id: third.id, scope: 'this', location: 'Cafe' }
+  });
+  assert.equal(place.isError, true);
+  const meet = await client.callTool({
+    name: 'update_event',
+    arguments: { event_id: third.id, scope: 'this', google_meet: true }
+  });
+  assert.equal(meet.isError, true);
+  const files = await client.callTool({
+    name: 'update_event',
+    arguments: { event_id: third.id, scope: 'this', attachments: [] }
+  });
+  assert.equal(files.isError, true);
+  const rule = await client.callTool({
+    name: 'update_event',
+    arguments: { event_id: third.id, scope: 'this', recurrence: ['RRULE:FREQ=DAILY'] },
+    ...yes
+  });
+  assert.match(JSON.stringify(rule.content), /cannot repeat on its own/);
+});
+
+test('"all events" from one occurrence moves the whole series as far as that one moved', async (t) => {
+  const sent = store(t, { series: weekly, [third.id]: third });
+  const r = await client.callTool({
+    name: 'update_event',
+    arguments: {
+      event_id: third.id,
+      scope: 'all',
+      start_time: '2026-11-20T11:30:00',
+      end_time: '2026-11-20T12:00:00',
+      time_zone: 'America/Los_Angeles'
+    },
+    ...yes
+  });
+  assert.notEqual(r.isError, true, JSON.stringify(r.content));
+  const [patch] = writesOf(sent);
+  assert.equal(patch.url.pathname, '/calendar/v3/calendars/primary/events/series');
+  assert.equal(patch.url.searchParams.get('sendUpdates'), 'all');
+  assert.deepEqual(patch.body?.start, {
+    dateTime: '2026-11-06T11:30:00',
+    timeZone: 'America/Los_Angeles'
+  });
+  assert.deepEqual(patch.body?.end, {
+    dateTime: '2026-11-06T12:00:00',
+    timeZone: 'America/Los_Angeles'
+  });
+  // A Zoom call comes from an add-on: Oddboro never takes it off.
+  const zoom = await client.callTool({
+    name: 'update_event',
+    arguments: { event_id: 'series', google_meet: false },
+    ...yes
+  });
+  assert.match(JSON.stringify(zoom.content), /Zoom Meeting, which Oddboro cannot change/);
+});
+
+test('"this and following" ends the series the day before and starts a new one with the change', async (t) => {
+  const sent = store(t, { series: weekly, [third.id]: third });
+  const refused = await client.callTool({
+    name: 'update_event',
+    arguments: { event_id: third.id, scope: 'following', summary: 'Planning v2' }
+  });
+  assert.equal(refused.isError, true);
+  assert.equal(writesOf(sent).length, 0);
+  const r = await client.callTool({
+    name: 'update_event',
+    arguments: {
+      event_id: third.id,
+      scope: 'following',
+      summary: 'Planning v2',
+      removed_attendee_emails: ['bo@example.com']
+    },
+    ...yes
+  });
+  assert.notEqual(r.isError, true, JSON.stringify(r.content));
+  assert.match(
+    JSON.stringify(r.content),
+    /emailed the change to ada@example\.com, bo@example\.com/
+  );
+  const [ended, started] = writesOf(sent);
+  assert.equal(ended.method, 'PATCH');
+  assert.equal(ended.url.pathname, '/calendar/v3/calendars/primary/events/series');
+  assert.equal(ended.url.searchParams.get('sendUpdates'), 'all');
+  assert.deepEqual(ended.body, {
+    recurrence: [
+      'RRULE:FREQ=WEEKLY;BYDAY=FR;UNTIL=20261120T075959Z',
+      'EXDATE;TZID=America/Los_Angeles:20261127T100000'
+    ]
+  });
+  assert.equal(started.method, 'POST');
+  assert.equal(started.url.searchParams.get('conferenceDataVersion'), '1');
+  const b = started.body!;
+  assert.equal(b.summary, 'Planning v2');
+  // Three of ten came before, so seven are left, and the skipped date still is.
+  assert.deepEqual(b.recurrence, [
+    'RRULE:FREQ=WEEKLY;COUNT=7;BYDAY=FR',
+    'EXDATE;TZID=America/Los_Angeles:20261127T100000'
+  ]);
+  assert.deepEqual(b.start, {
+    dateTime: '2026-11-20T10:00:00-08:00',
+    timeZone: 'America/Los_Angeles'
+  });
+  assert.deepEqual(b.attendees, [{ email: OWN_ADDRESS }, { email: 'ada@example.com' }]);
+  // The same Zoom link, carried over, never a new one.
+  assert.equal((b.conferenceData as { conferenceId: string }).conferenceId, 'zoom-1');
+});
+
+test('a new series that fails gives the old one its rule back', async (t) => {
+  const sent: { method: string; body?: Record<string, unknown> }[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit = {}) => {
+    const method = init.method ?? 'GET';
+    sent.push({ method, body: typeof init.body === 'string' ? JSON.parse(init.body) : undefined });
+    const id = /\/events\/([^/?]+)/.exec(new URL(url).pathname)?.[1];
+    if (method === 'GET' && !url.includes('/instances'))
+      return Response.json(
+        id === 'series' ? { ...weekly, attendees: [] } : { ...third, attendees: [] }
+      );
+    if (method === 'POST') return Response.json({ error: { message: 'Nope' } }, { status: 400 });
+    return Response.json({ items: [], id });
+  });
+  const r = await client.callTool({
+    name: 'update_event',
+    arguments: { event_id: third.id, scope: 'following', location: 'Cafe' }
+  });
+  assert.equal(r.isError, true);
+  const patches = sent.filter((s) => s.method === 'PATCH');
+  assert.equal(patches.length, 2);
+  assert.deepEqual(patches[1].body, { recurrence: weekly.recurrence });
+});
+
+test('a move to another calendar goes through events.move', async (t) => {
+  const sent = store(t, { solo: { id: 'solo', summary: 'Gym', attendees: [] } });
+  const r = await client.callTool({
+    name: 'update_event',
+    arguments: { event_id: 'solo', move_to_calendar_id: 'home@group.calendar.google.com' }
+  });
+  assert.notEqual(r.isError, true, JSON.stringify(r.content));
+  const [move] = writesOf(sent);
+  assert.equal(move.method, 'POST');
+  assert.equal(move.url.pathname, '/calendar/v3/calendars/primary/events/solo/move');
+  assert.equal(move.url.searchParams.get('destination'), 'home@group.calendar.google.com');
+  assert.equal(move.url.searchParams.get('sendUpdates'), 'none');
 });
