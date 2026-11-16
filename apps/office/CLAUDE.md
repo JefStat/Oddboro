@@ -512,27 +512,51 @@ pieces under 3,900 bytes a line, so no value is on a command line.
    desk (`call.shown`, never in an Odd's prompt), with the exact call
    folded under it. `update_labels` takes many `thread_ids` in one call.
    Calendar's `create_event` and `update_event` (Google's names; no tool
-   deletes an event or a calendar) follow the level, except a call that
-   would make Google email anyone besides the owner: an event created with
-   guests, or a change to an event with guests on it, read from Google as
-   the call comes (`eventHold` in `google/calendar.ts`, through
-   `eventHoldFor` in `access.ts`). The gateway holds that one as a `call`
-   ask at every level, Act and a standing yes included, so both tools list
-   `oddboro_title` and `oddboro_why` at Act too, needed only then. The held
-   call keeps `call.event` (the account, and for a change the event's title
-   and the people on it), and the Desk opens it in
-   `src/lib/ui/EventReview.svelte`, styled as a reply: account, calendar,
-   title, start and end with the time zone written out, place, guests,
-   description, and "Google will email an invite to: ...". The owner's
-   version posts as `arguments` to `/api/asks/[id]/call`, which takes only
-   the fields `ownerEdit` names (never the calendar or the event) and only
-   on an event. Only `makeCall` sets `OWNER_META` (`google/http.ts`), and
-   only with it does a Calendar call go with `sendUpdates=all`; without it
-   the tool refuses any call that emails someone and sends
-   `sendUpdates=none`. A new event's description ends with "Added by
-   Oddboro" and a link (`withEventFooter`), added where the text is first
-   written: as the gateway holds it, or as a run's call goes. The owner's
-   click never adds it, so a line they removed stays removed.
+   deletes an event or a calendar) take what Google Calendar's own editor
+   offers: a repeat (Google's RRULE, EXDATE and RDATE lines), reminders,
+   a Google Meet call (`conferenceData.createRequest`, always with
+   `conferenceDataVersion=1`), busy or free, visibility, optional guests,
+   guest permissions, a colour, Drive file links (`supportsAttachments=true`,
+   never an upload), a separate end time zone, and for a change, a move to
+   another calendar (`events.move`) and a scope for one occurrence of a
+   repeating event: this one, this and following, or all. "This and
+   following" is two calls, as Google's own editor makes them: the series
+   ends the day before (UNTIL), and a new series starts there with the change,
+   carrying the guests, the same call and the rest (`splitSeries` in
+   `google/calendar-write.ts`). A Zoom or other add-on call cannot be made
+   through Google's API, so Oddboro never makes or takes one off and keeps it
+   on every change. The tools follow the level, except a call that would make
+   Google email anyone besides the owner: an event created with guests, or a
+   change to an event with guests on it, read from Google as the call comes
+   (`eventHold` in `google/calendar.ts`, through `eventHoldFor` in
+   `access.ts`). A change to only the owner's reminders or the colour emails
+   nobody and follows the level (`personalOnly`). The gateway holds a call
+   that emails anyone as a `call` ask at every level, Act and a standing yes
+   included, so both tools list `oddboro_title` and `oddboro_why` at Act too,
+   needed only then. The held call keeps `call.event`, read once as it is
+   held so the card never calls Google: the account, the calendars the owner
+   can write to with their colours and default reminders, Google's event
+   colours, and for a change the event as it stood and its series. The Desk
+   opens it in `src/lib/ui/EventReview.svelte`: who wants it and why, a
+   read-only summary like Google's event popup, Edit for the sections on one
+   icon grid (`RepeatPicker`, `ZonePicker`, `GuestField`), and a footer that
+   sticks to the bottom with the one box that says who Google emails and what
+   changes, then the buttons. Its rules (the form, the owner's version, the
+   words in the box) are in `src/lib/calendar/event-card.ts`, with the repeat
+   in `rrule.ts` and wall clocks in `zones.ts`, all tested without a page.
+   Google's event and calendar colours are the owner's data, not office
+   chrome: the card shows Google's own values only inside a swatch or dot,
+   with Google's names as labels, so hard rule 7 holds for everything else.
+   The owner's version posts as `arguments` to `/api/asks/[id]/call`, which
+   takes only the fields `ownerEdit` names (never the event) and only a
+   calendar the card offered. Only `makeCall` sets `OWNER_META`
+   (`google/http.ts`), and only with it does a Calendar call that emails
+   anyone go with `sendUpdates=all`; without it the tool refuses any call
+   that emails someone and sends `sendUpdates=none`. A new event's
+   description ends with "Added by Oddboro" and a link (`withEventFooter`),
+   added where the text is first written: as the gateway holds it, or as a
+   run's call goes. The owner's click never adds it, so a line they removed
+   stays removed.
    Its input grows with the text
    up to 60% of the chat, and the bar above it drags it taller; that height is
    remembered per viewer. Every run's system prompt opens with "Who you work

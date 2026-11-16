@@ -185,7 +185,7 @@ An Odd may ask for your Gmail, Google Drive or Google Calendar. You approve or d
 
 - **Gmail** (`gmail.modify` and `gmail.settings.basic`): search and read your mail, change its labels (such as marking it read or archiving it), move it to the trash or to spam and back, write drafts, send a draft, send a reply you click Send on, read your filters, and create a filter you click Create filter on. Oddboro never deletes mail permanently.
 - **Google Drive** (`drive`): find and read your files, including Docs, Sheets and Slides, create Docs and Sheets, and change Docs and Sheets. Oddboro never deletes or trashes a file.
-- **Google Calendar** (`calendar.readonly`, `calendar.events` and `userinfo.email`): list your calendars, read events, check when calendars are busy, create events and change events. Oddboro never deletes an event or a calendar. Your email address identifies which account you connected.
+- **Google Calendar** (`calendar.readonly`, `calendar.events` and `userinfo.email`): list your calendars, read events, check when calendars are busy, create events and change events, including how they repeat, Google Meet links, reminders, colours and links to your Google Drive files. Oddboro never deletes an event or a calendar, and never uploads a file to one. Your email address identifies which account you connected.
 
 How it works, and what New Altitude does not do:
 
