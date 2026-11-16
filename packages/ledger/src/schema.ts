@@ -607,10 +607,11 @@ export const ledger = pgTable(
  * How a staffer reaches an outside tool: a server it starts (`stdio`), a
  * hosted one (`http`), found in the MCP Registry or named by its address, or
  * one the office serves itself (`builtin`: Gmail and Google Drive, in
- * apps/office/src/lib/server/google/). A secret named in `secrets` lives in
+ * apps/office/src/lib/server/google/), or a program the office runs for
+ * the Odd (`command`: the GitHub CLI and twg, in apps/office/src/lib/server/gh-tool.ts and twg-tool.ts). A secret named in `secrets` lives in
  * the system's secret store, never here.
  */
-export const CONNECTOR_KINDS = ['stdio', 'http', 'builtin'] as const;
+export const CONNECTOR_KINDS = ['stdio', 'http', 'builtin', 'command'] as const;
 export type ConnectorKind = (typeof CONNECTOR_KINDS)[number];
 export type ConnectorConfig = {
   command?: string;
@@ -645,6 +646,10 @@ export type ConnectorConfig = {
   google?: GoogleProduct;
   /** The Google account a Google connector is signed in to, once its sign-in landed. */
   account?: string;
+  /** A command tool: the program the office runs for the Odd, outside its sandbox (`gh`, `twg`). */
+  cli?: 'gh' | 'twg';
+  /** A command tool's token is the live sign-in of this connector. */
+  signInFrom?: string;
 };
 /** The Google products the office serves itself. One connector is one account of one product. */
 export type GoogleProduct = 'gmail' | 'drive';

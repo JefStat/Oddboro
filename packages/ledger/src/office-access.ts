@@ -247,18 +247,20 @@ const AWS_STEP: Record<string, string> = {
 /** The steps that connect a tool. `again` gives them even when it looks connected. */
 function connectSteps(conn: ConnectorRow, again = false): Step[] {
   if (conn.readyAt && !again) return [];
-  const key = `oauth:${conn.id}`;
+  // A command tool signs in through another connector's sign-in.
+  const signIn = conn.config.signInFrom ?? conn.id;
+  const key = `oauth:${signIn}`;
   // One step: picking the role connects the tool too.
   if (isAws(conn.id))
     return [{ text: AWS_STEP[conn.id], done: false, action: { kind: 'aws', connector: conn.id } }];
   return [
-    ...(conn.config.oauth
+    ...(conn.config.oauth || conn.config.signInFrom
       ? [
           {
-            text: `Click Sign in. ${conn.config.oauth === 'google' ? 'Google' : conn.name}'s sign-in page opens in a new tab.`,
+            text: `Click Sign in. ${conn.config.oauth === 'google' ? 'Google' : conn.config.signInFrom ? 'GitHub' : conn.name}'s sign-in page opens in a new tab.`,
             done: false,
             key,
-            action: { kind: 'oauth' as const, connector: conn.id }
+            action: { kind: 'oauth' as const, connector: signIn }
           },
           {
             text: 'Approve access on that page. This step ticks itself when it lands.',

@@ -121,6 +121,10 @@ export async function fromRegistry(name: string): Promise<Candidate | undefined>
 
 /** GitHub's own hosted MCP server, which signs in with New Altitude's GitHub app (the office's `oauth.ts`). */
 export const GITHUB_ID = 'github';
+/** The GitHub CLI, run by the office on the owner's GitHub sign-in (the office's `gh-tool.ts`). */
+export const GH_ID = 'gh';
+/** The Teamwork Graph CLI, run by the office on the owner's own twg login (the office's `twg-tool.ts`). */
+export const TWG_ID = 'twg';
 /** Any address on GitHub's MCP server, which an Odd's ask turns into the catalog's GitHub. */
 export const GITHUB_ADDRESS = /^https:\/\/api\.githubcopilot\.com\//i;
 
@@ -171,6 +175,22 @@ export const BUILT_IN: (typeof connectors.$inferInsert)[] = [
       "The owner's GitHub through GitHub's own MCP server: repositories, code, issues and pull requests. The owner signs in with GitHub on their desk, so never ask for a key or a token, and never tell them to make one. Ask for read to look, write to open issues, comment or change code.",
     kind: 'http',
     config: { url: 'https://api.githubcopilot.com/mcp/', oauth: true }
+  },
+  {
+    id: GH_ID,
+    name: 'GitHub CLI',
+    description:
+      "The owner's GitHub through the gh command line, run by the office as the owner: anything gh can do. gh_read runs reads at once. gh_write runs every other command, which waits for the owner's yes at Draft. It signs in with the owner's GitHub sign-in, so never ask for a key or a token. Ask for read to look, write to change anything.",
+    kind: 'command',
+    config: { cli: 'gh', signInFrom: GITHUB_ID }
+  },
+  {
+    id: TWG_ID,
+    name: 'Jira and Confluence (twg)',
+    description:
+      "The owner's Jira, Confluence and Bitbucket through the Teamwork Graph CLI (twg), run by the office as the owner on their own twg login: work items, pages, pull requests and search. twg_read runs the commands twg marks as reads at once. twg_write runs every other command, which waits for the owner's yes at Draft. The owner signs in with twg login on their own computer, so never ask for a key or a token. Ask for read to look, write to create or change anything.",
+    kind: 'command',
+    config: { cli: 'twg' }
   }
 ];
 
@@ -230,7 +250,14 @@ export async function ensureConnector(
     return { connector: own };
   }
   const built = BUILT_IN.find((b) => b.id === id);
-  if (built) return { connector: await addConnector(built) };
+  if (built) {
+    // The GitHub CLI signs in through the GitHub connector, so that one must exist.
+    if (built.id === GH_ID) {
+      const hub = BUILT_IN.find((b) => b.id === GITHUB_ID);
+      if (hub) await addConnector(hub);
+    }
+    return { connector: await addConnector(built) };
+  }
   if (url)
     // A hosted server the owner named by its address, not in the registry.
     return {

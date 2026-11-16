@@ -25,6 +25,8 @@ import {
   type GoogleProduct
 } from '@oddboro/ledger';
 import { awsReady, secretNamesClient, toolKeys } from './aws.ts';
+import { ghClient } from './gh-tool.ts';
+import { twgClient } from './twg-tool.ts';
 import { driveServer } from './google/drive.ts';
 import { gmailServer, heldWords, type HeldWords } from './google/gmail.ts';
 import { bearer, BuiltWithout, startSignIn } from './oauth.ts';
@@ -35,6 +37,8 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 /** Check the sign-in the run will use, including an AWS role that holds another tool's key. */
 export async function sourceReady(c: ConnectorRow): Promise<boolean> {
   if (c.config.oauth && !(await bearer(c.id).catch(() => undefined))) return false;
+  if (c.config.signInFrom && !(await bearer(c.config.signInFrom).catch(() => undefined)))
+    return false;
   return awsReady(c);
 }
 
@@ -51,6 +55,7 @@ export async function upstream(c: ConnectorRow, open = false): Promise<Client> {
   )
     throw new Error('Physical mail requires sign-in at the LegalZoom read-only endpoint.');
   if (c.kind === 'builtin') return builtin(c);
+  if (c.kind === 'command') return command(c);
   // AWS Secrets Manager's names come from the office itself, never a server.
   if (c.id === AWS_SECRETS_ID) return secretNamesClient();
   const { env, headers } = await toolKeys(c);
@@ -135,6 +140,18 @@ async function builtin(c: ConnectorRow): Promise<Client> {
   const client = new Client({ name: 'oddboro-office', version: '1.0.0' });
   await client.connect(ours);
   return client;
+}
+
+/** A program the office runs for the Odd, on the live sign-in of the connector it names. */
+async function command(c: ConnectorRow): Promise<Client> {
+  if (c.config.cli === 'twg') return twgClient();
+  const from = c.config.signInFrom;
+  if (c.config.cli !== 'gh' || !from) throw new Error(`The office runs no program named ${c.id}`);
+  return ghClient(async () => {
+    const t = await bearer(from);
+    if (!t) throw new Error('GitHub needs signing in again. Call reconnect_access.');
+    return t;
+  });
 }
 
 /** Start a connector with its secrets and list its tools, marking the ones a Read only grant reaches (`readsOnly`). */
