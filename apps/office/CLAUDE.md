@@ -686,14 +686,18 @@ pieces under 3,900 bytes a line, so no value is on a command line.
    `FolderWarning.svelte` shows it with a warning icon, a More info link to
    the site's `/info/folder-sharing/`, and Accept and Cancel; Accept sends the
    same change again with `accept`, on this tab and on a folder ask's Give
-   access. `setFolder` refuses one inside or holding
-   a folder the Odd already has ("That folder is inside one this Odd already
-   has, or holds one."); the line shows under the field. An Odd asks for a
-   folder with `ask_for_folder` (item 7), for Run commands or Browse the web
-   with `ask_for_switch`, for a higher level with `ask_for_level`, and for
-   office tools with `ask_for_office_tool`, never with steps for this tab: a
-   rule in
-   `house.ts` says so. The
+   access. `setFolder` refuses a folder on Can read inside one on Can write,
+   either way round ("A folder on Can read can't sit inside one on Can write.
+   This Odd can already change everything in it.",
+   `FOLDER_REFUSED.readInsideChange`), and one that would hold a folder
+   dropped for holding keys ("That folder holds one of this Odd's folders that
+   has your keys or sign-ins.", `FOLDER_REFUSED.nested`); the line shows under
+   the field. Since the tab adds
+   each folder at Can read first, a folder to change goes inside one to read in
+   either order. An Odd asks for a folder with `ask_for_folder` (item 7), for Run
+   commands or Browse the web with `ask_for_switch`, for a higher level with
+   `ask_for_level`, and for office tools with `ask_for_office_tool`, never with
+   steps for this tab: a rule in `house.ts` says so. The
    list reads the profile's folders, each with the home folder written `~`
    (`shown`), so it loads nothing of its own and the staff route has no GET;
    a level change or Remove sends the path as stored. A folder that holds or

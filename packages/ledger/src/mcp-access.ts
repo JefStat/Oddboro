@@ -101,7 +101,9 @@ if (has('find_connectors'))
       let found: Awaited<ReturnType<typeof searchRegistry>> = [];
       let note = '';
       try {
-        found = await searchRegistry(need);
+        found = (await searchRegistry(need)).filter(
+          (s) => !own.some((c) => c.registry === s.registry || c.id === s.registry)
+        );
       } catch (e) {
         note = `\nThe MCP Registry did not answer: ${e instanceof Error ? e.message : e}`;
       }

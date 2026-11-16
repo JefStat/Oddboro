@@ -147,6 +147,13 @@ port, 3 no Node, 4 no office server, 5 a bad server URL, 6 the server would
 not start or keep running (no randomness for the key counts as not starting),
 7 no window. 0 is a quit.
 
+Setup’s **Save support report** downloads the latest recognized office log events.
+If startup fails, the shell saves `office.support.txt` beside the log and gives its
+location in the error dialog. Each failure replaces the previous report. Both paths
+use `apps/office/src/lib/server/support-report.js`. If the bundled Node is missing,
+the report still contains the app version, system, exit code and failure reason.
+Saving a report works with online diagnostics off.
+
 ## The contract with the server
 
 - Entry: `<resources>/server/apps/office/build/index.js`, run with cwd
@@ -475,6 +482,13 @@ runner it asks for `--replace-installed`. Quit Oddboro first: Linux and
 Windows keep to one at a time. Results go to `--out`: `results.json`,
 `summary.md`, `office.log`, `shell.log` and a screenshot. The run's home
 goes when it ends, pass or fail; `--keep` keeps it for a look.
+
+Where it runs: `--stage` in Checks (`ci.yml`) on every pull request, on all
+three systems. `--from` on an unsigned 9.9.9 build in `app-smoke.yml`, on
+every pull request that changes the app (Windows, macOS 15, Ubuntu 22.04)
+and by hand (Run workflow) on all six release machines, then in `release.yml` on
+the signed builds before each draft. A failed row's words are in the job's
+summary table; the results, logs and screenshot are its `smoke-*` artifact.
 
 ### Secrets
 

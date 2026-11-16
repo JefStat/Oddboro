@@ -186,6 +186,7 @@ impl Server {
             .env("BODY_SIZE_LIMIT", "16G")
             .env("PATH", &self.path)
             .env("ODDBORO_VERSION", &self.version)
+            .env("ODDBORO_LOG", &self.log)
             // A pipe the shell holds open. It closes when the shell dies by
             // any means, so the server can treat its end as "quit".
             .stdin(Stdio::piped())

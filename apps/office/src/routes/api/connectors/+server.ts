@@ -39,7 +39,9 @@ export const GET: RequestHandler = async ({ url }) => {
   let problem: string | undefined;
   if (q)
     try {
-      registry = (await searchRegistry(q)).filter((c) => !own.some((o) => o.id === c.registry));
+      registry = (await searchRegistry(q)).filter(
+        (c) => !saved.some((o) => o.registry === c.registry || o.id === c.registry)
+      );
     } catch (e) {
       problem = e instanceof Error ? e.message : String(e);
     }

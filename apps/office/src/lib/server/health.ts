@@ -20,7 +20,13 @@ let pageLines = 0;
 /** Runs one startup step and records how long it took. */
 export async function timed<T>(name: string, step: () => Promise<T> | T): Promise<T> {
   const started = performance.now();
-  const result = await step();
+  let result: T;
+  try {
+    result = await step();
+  } catch (e) {
+    console.error(`office: ${name} failed`);
+    throw e;
+  }
   steps[name] = Math.round(performance.now() - started);
   console.log(`office: ${name} in ${steps[name]} ms`);
   return result;

@@ -103,12 +103,22 @@ function toCandidate(s: RegistryServer): Candidate {
   };
 }
 
+/** A work description such as "Notion pages" need not appear in the registry's server name. */
+const hostedProviders = [
+  { product: /\bnotion\b/i, registry: 'com.notion/mcp' },
+  { product: /\blinear\b/i, registry: 'app.linear/linear' }
+];
+
 export async function searchRegistry(query: string, limit = 8): Promise<Candidate[]> {
-  const url = `${REGISTRY}?version=latest&limit=${limit}&search=${encodeURIComponent(query)}`;
-  const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-  if (!res.ok) throw new Error(`The MCP Registry answered ${res.status}`);
-  const body = (await res.json()) as { servers: { server: RegistryServer }[] };
-  return body.servers.map((s) => toCandidate(s.server));
+  const provider = /\s/.test(query) && hostedProviders.find((p) => p.product.test(query));
+  for (const search of provider ? [query, provider.registry] : [query]) {
+    const url = `${REGISTRY}?version=latest&limit=${limit}&search=${encodeURIComponent(search)}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error(`The MCP Registry answered ${res.status}`);
+    const body = (await res.json()) as { servers: { server: RegistryServer }[] };
+    if (body.servers.length) return body.servers.map((s) => toCandidate(s.server));
+  }
+  return [];
 }
 
 /** One registry server by its exact name. */
@@ -230,6 +240,10 @@ export async function ensureConnector(
       }
     }
     return { connector: own };
+  }
+  if (!url && wanted.includes('/')) {
+    const saved = await connector(connectorId(wanted));
+    if (saved?.registry === wanted) return { connector: saved };
   }
   const built = BUILT_IN.find((b) => b.id === id);
   if (built) return { connector: await addConnector(built) };
