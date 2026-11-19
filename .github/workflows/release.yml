@@ -320,7 +320,8 @@ jobs:
           fi
 
       # The signing client is x64 only, so both machines use the SDK's x64
-      # signtool and an x64 .NET 8 for it; on arm64 Windows they run under
+      # signtool and an x64 .NET 10 for it (the client needs 10 or newer since
+      # 1.0.147); on arm64 Windows they run under
       # its x64 emulation. metadata.json names the account and its profile.
       - name: Get the signing tools
         shell: pwsh
@@ -337,7 +338,7 @@ jobs:
           Expand-Archive "$dir.zip" -DestinationPath $dir
           $dotnet = Join-Path $env:RUNNER_TEMP 'dotnet-x64'
           & ([scriptblock]::Create((Invoke-RestMethod https://dot.net/v1/dotnet-install.ps1))) `
-            -Runtime dotnet -Channel 8.0 -Architecture x64 -InstallDir $dotnet -NoPath
+            -Runtime dotnet -Channel 10.0 -Architecture x64 -InstallDir $dotnet -NoPath
           $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
             Where-Object { $_.Directory.Name -eq 'x64' } | Sort-Object FullName | Select-Object -Last 1
           if (-not $signtool) { throw 'No x64 signtool.exe in the Windows SDK' }
