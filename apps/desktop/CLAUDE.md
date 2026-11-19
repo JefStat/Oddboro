@@ -408,7 +408,7 @@ lockfile-only update, so run it by hand for one that should ship. Six jobs:
    secret is stored: the job's GitHub OIDC token, fetched fresh for each
    file, signs in as the `AZURE_CLIENT_ID` app. The account, endpoint and
    profile are `release` variables. The signing client is x64 only, so both
-   machines run the SDK's x64 signtool with an x64 .NET 8, under emulation
+   machines run the SDK's x64 signtool with an x64 .NET 10, under emulation
    on arm64. A release built on GitHub without them stops.
    Before it signs, `release.ts` checks the build's own version: the Windows
    app and installer's file version, and the Mac app's `Info.plist`.
