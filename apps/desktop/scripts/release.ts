@@ -366,10 +366,12 @@ function buildWindows(version: string): void {
   const built = join(RELEASE, 'bundle', 'nsis');
   const setup = builtFile(built, version, '-setup.exe');
   checkFileVersion(join(built, setup), version);
-  // The signature checked the way Windows checks it on an owner's computer.
+  // The installer's signature, checked the way Windows checks it on an
+  // owner's computer. Tauri signs a patched copy of the app for the installer
+  // and then puts the unsigned original back in RELEASE, so that one is not
+  // checked here. A failed signature of the app already stops the build.
   if (sign)
-    for (const f of [join(RELEASE, 'oddboro.exe'), join(built, setup)])
-      run(process.env.ODDBORO_SIGNTOOL ?? 'signtool', ['verify', '/pa', '/v', f]);
+    run(process.env.ODDBORO_SIGNTOOL ?? 'signtool', ['verify', '/pa', '/v', join(built, setup)]);
 
   rmSync(OUT, { recursive: true, force: true });
   mkdirSync(OUT, { recursive: true });
