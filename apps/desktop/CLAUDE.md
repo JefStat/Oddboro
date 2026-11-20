@@ -404,7 +404,9 @@ lockfile-only update, so run it by hand for one that should ship. Six jobs:
    and a `latest.json` for `windows-x86_64` or `windows-aarch64`. The app,
    the installer and its uninstaller are signed through Azure Artifact
    Signing (`scripts/sign-windows.ts`, Tauri's `signCommand`), and
-   `release.ts` checks each signature with `signtool verify /pa`. No signing
+   `release.ts` checks the installer's with `signtool verify /pa`. Tauri
+   signs a patched copy of the app for the installer and puts the unsigned
+   original back in `target`, so the file there is never checked. No signing
    secret is stored: the job's GitHub OIDC token, fetched fresh for each
    file, signs in as the `AZURE_CLIENT_ID` app. The account, endpoint and
    profile are `release` variables. The signing client is x64 only, so both
