@@ -8,7 +8,7 @@
 import { execFile, execFileSync, spawn, type ExecFileException } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { delimiter, join, resolve, sep } from 'node:path';
 
 export type System = 'mac' | 'linux' | 'windows';
 
@@ -351,7 +351,9 @@ export function claudeCommand(): [string, string[]] {
  * How to start an npm-installed tool on Windows, found on the PATH (and in
  * `extra` folders): its own .exe when there is one, else its .cmd shim's
  * script run under this Node, since Node will not start a .cmd without a
- * shell. `pkg` is the package's folder under node_modules. Undefined when
+ * shell. `pkg` is the package's folder under node_modules: beside the shim,
+ * where npm puts it, or wherever the shim's own script line names inside it,
+ * as pnpm, Yarn and a moved npm folder write it (#343). Undefined when
  * neither is there.
  */
 export function npmCommand(
@@ -363,17 +365,43 @@ export function npmCommand(
   for (const dir of dirs) {
     const exe = join(dir, `${command}.exe`);
     if (existsSync(exe)) return [exe, []];
-    if (!existsSync(join(dir, `${command}.cmd`))) continue;
-    const folder = join(dir, 'node_modules', ...pkg);
-    try {
-      const { bin } = JSON.parse(readFileSync(join(folder, 'package.json'), 'utf8')) as {
-        bin?: string | Record<string, string>;
-      };
-      const entry = join(folder, typeof bin === 'string' ? bin : (bin?.[command] ?? 'cli.js'));
-      return /\.[cm]?js$/.test(entry) ? [process.execPath, [entry]] : [entry, []];
-    } catch {
-      // A shim with no package beside it: keep looking.
-    }
+    const shim = join(dir, `${command}.cmd`);
+    if (!existsSync(shim)) continue;
+    const entry = packageEntry(join(dir, 'node_modules', ...pkg), command) ?? shimEntry(shim, pkg);
+    // A shim with no package it names: keep looking.
+    if (entry) return /\.[cm]?js$/.test(entry) ? [process.execPath, [entry]] : [entry, []];
+  }
+  return undefined;
+}
+
+/** The file a package's package.json names for `command`, or undefined with no package there. */
+function packageEntry(folder: string, command: string): string | undefined {
+  try {
+    const { bin } = JSON.parse(readFileSync(join(folder, 'package.json'), 'utf8')) as {
+      bin?: string | Record<string, string>;
+    };
+    return join(folder, typeof bin === 'string' ? bin : (bin?.[command] ?? 'cli.js'));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The script a .cmd shim runs, when it is a file inside `pkg` that is there.
+ * A shim names it in quotes, from the shim's own folder (`%dp0%\` or
+ * `%~dp0\`) or as a full path.
+ */
+function shimEntry(shim: string, pkg: string[]): string | undefined {
+  let text: string;
+  try {
+    text = readFileSync(shim, 'utf8');
+  } catch {
+    return undefined;
+  }
+  const inside = `${sep}${join('node_modules', ...pkg)}${sep}`.toLowerCase();
+  for (const [, from, path] of text.matchAll(/"(%~dp0\\?|%dp0%\\?)?([^"%]+\.[cm]?js)"/gi)) {
+    const file = from ? resolve(join(shim, '..'), path) : path;
+    if (resolve(file).toLowerCase().includes(inside) && existsSync(file)) return file;
   }
   return undefined;
 }
