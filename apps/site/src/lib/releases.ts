@@ -26,6 +26,26 @@ export type Release = {
 
 export const RELEASES: Release[] = [
   {
+    version: '0.0.13',
+    date: '2026-11-22',
+    title: 'Bug fixes for Windows, and a progress bar for ledger search.',
+    summary:
+      'On Windows, Odds on Claude Code sign in again, Codex installs from Setup, and the office finishes its work on Codex. Ledger search shows how much of its download has arrived.',
+    notes: [
+      'On Windows, Odds on Claude Code no longer fail with "Not logged in" when the computer has an Anthropic API key set.',
+      'On Windows, Install and Update for Codex work, in place of "spawn npm ENOENT".',
+      'On Windows, hiring an Odd, drawing a look and designing an office on Codex no longer fail partway.',
+      "Ledger search's download shows how much has arrived.",
+      'In Setup, Claude Code says Ready when it is signed in, whichever tool you pick for the office.'
+    ],
+    builds: ['mac', 'windows-x64', 'windows-arm64', 'linux-x86_64', 'linux-aarch64'],
+    art: {
+      name: 'bug-vacuum',
+      alt: 'In an open-plan office, a dark beetle skitters across the floor. Ada starts at the sight of it and switches on a teal vacuum. The beetle runs off, doubles back behind her, and she turns and chases it down. The vacuum pulls it in, the bag puffs out, and Ada turns to you and hops for joy.',
+      shareAlt: 'Ada in a pixel-art office, a dark beetle at the head of her running teal vacuum.'
+    }
+  },
+  {
     version: '0.0.12',
     date: '2026-11-19',
     title: 'Your whole office works from one pane.',
