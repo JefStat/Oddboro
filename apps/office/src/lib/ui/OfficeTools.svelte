@@ -16,6 +16,8 @@
   // as beside "Runs on"). Each says its version: one older than the office
   // runs offers Update first, and one with a newer version out offers it in
   // one click. Claude Code's panel is ClaudeCard: its plan or key, and its model.
+  // Each tile says Ready when its tool is signed in, whichever tool is picked:
+  // Claude Code's when its plan is signed in or a key is in use (`keyInUse`).
   type Props = {
     tools: AgentTools;
     /** Claude's model, when the office runs on Claude Code. */
@@ -25,7 +27,8 @@
   };
   let { tools, onmodel = () => {}, onclaudeready = () => {} }: Props = $props();
 
-  let claudeReady = $state(false);
+  /** What the Claude panel last said: signed in on the plan, or a key in use. */
+  let claudeReady = $state<boolean | undefined>();
   /** The key a key tool's field holds, by tool. */
   let keys = $state<Partial<Record<Agent, string>>>({});
   /** Key tools whose field is open over a key they already have. */
@@ -49,7 +52,8 @@
       if (tools.installingClaude) return busy;
       if (!t.installed) return 'Install';
       if (t.tooOld) return 'Update';
-      return tools.office === 'claude' && claudeReady ? 'Ready' : 'Installed';
+      // The panel's word once it has spoken, which stays after another tool is picked.
+      return (claudeReady ?? (!!t.signIn?.signedIn || !!t.keyInUse)) ? 'Ready' : 'Installed';
     }
     const action = toolAction(t);
     if (action === 'install') return 'Install';
