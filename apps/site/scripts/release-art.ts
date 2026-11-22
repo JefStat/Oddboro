@@ -54,6 +54,11 @@
 //                 of the back wall and snow at the windows. OPEN PLAN! Ada
 //                 hands the folder straight over (0.0.12, one pane in place
 //                 of two panels)
+//   bug-vacuum    in the open-plan room, a beetle skitters in. Ada starts
+//                 and switches on her vacuum, and it runs, doubles back
+//                 behind her, and she chases it down. The vacuum pulls it
+//                 in, the bag puffs, and she turns to you and hops for joy.
+//                 No words, only what they do (0.0.13, bug fixes)
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { createImage, drawImage, encodePng, scaleImage, type Image } from '@oddboro/sprites/png';
@@ -2333,6 +2338,189 @@ function knockThrough({
 // The share frame and the still: OPEN PLAN! over the open room.
 const SHARE_KNOCK = 140;
 
+// An upright vacuum, pushed ahead: the grip at the hand, the stick down to a
+// red bag, and the head on the floor in front. Facing right; drawn flipped
+// when its Odd faces left.
+const VACUUM_ROWS = [
+  'kk..........',
+  'kMk.........',
+  '.kMk........',
+  '..kMk.......',
+  '..kTTk......',
+  '.kTtTTk.....',
+  '.kTtTTk.....',
+  '.kTtTTk.....',
+  '.kTtTTk.....',
+  '.kTTTTk.....',
+  '..kMMk......',
+  '..kMk.......',
+  '..kMMkkkkkk.',
+  '.kMmmmmmmmMk',
+  '.kMMMMMMMMMk',
+  '..k5kkkkk5k.'
+];
+const VACUUM = sprite(VACUUM_ROWS);
+// The bag full of bug: one pixel wider on each side for a beat.
+const VACUUM_FULL = sprite(
+  VACUUM_ROWS.map((r, y) => (y >= 5 && y <= 9 ? r.replace('.kT', 'kTT').replace('Tk.', 'TTk') : r))
+);
+// A dark beetle, side on, facing right: its shell, its head with an eye and
+// feelers, and legs that swap with each step. Dark, so it shows on the oak.
+const BUG_BODY = ['..kkkk..k', '.kKIIKk.k', 'kKKIKKkkk', 'kKKKKKk=k', '.kkkkkkkk'];
+const BUG = [sprite([...BUG_BODY, '.k.k.k.k.']), sprite([...BUG_BODY, 'k.k.k.k..'])];
+const BUG_H = 6;
+const BUG_SUCKED = sprite(['.kk.', 'kKKk', '.kk.']);
+
+/**
+ * 0.0.13, a release of bug fixes. In the open-plan room, a beetle skitters in
+ * across the floor. Ada starts and switches on her vacuum. The bug runs,
+ * doubles back behind her, and she turns and chases it down. The vacuum pulls
+ * it in, the bag puffs, and she turns to you and hops for joy. No words.
+ */
+function bugVacuum({ open, view, margin, ada, shade }: KnockLayers): GifFrame[] {
+  const frames: GifFrame[] = [];
+  const lit = (src: Image) => {
+    const img = createImage(src.width, src.height);
+    drawImage(img, src, 0, 0);
+    return shade(img);
+  };
+  const vacuum = lit(VACUUM);
+  const full = lit(VACUUM_FULL);
+  const bugs = BUG.map(lit);
+  const sucked = lit(BUG_SUCKED);
+  const air = hexToRgba(PALETTE.m.hex);
+
+  // Ada's sprite top, feet on the floor in front of the desks.
+  const Y = 58;
+  const A = { x: 14, pose: 'idle-side', flip: false };
+  // The bug's top-left corner; its feet meet the floor at y + BUG_H.
+  const B = { x: view.w + 4, y: 84, flip: true, step: 0, shown: true, img: bugs[0] };
+  let on = false;
+  let bagFull = false;
+  /** How far Ada hops off the floor, in pixels. */
+  let hop = 0;
+
+  const pose = (p: string) => (/-\d$/.test(p) ? p : `${p}-${Math.floor(frames.length / 3) % 4}`);
+  /** The vacuum's top-left corner, and where its head sucks, in the view's pixels. */
+  const vac = () => {
+    const x = A.flip ? A.x + 5 - VACUUM.width : A.x + 11;
+    return { x, y: Y + 16 - hop, mouth: A.flip ? x : x + VACUUM.width - 1 };
+  };
+
+  const shot = () => {
+    const t = frames.length;
+    const img = createImage(view.w + 2 * margin, view.h + 2 * margin);
+    drawImage(img, open, 0, 0);
+    const bug = () =>
+      B.shown && drawImage(img, B.img, Math.round(B.x) + margin, B.y + margin, !B.flip);
+    // A bug further back on the floor than Ada's feet runs behind her.
+    if (B.y + BUG_H < Y + 31) bug();
+    drawImage(img, ada(pose(A.pose)), A.x + margin, Y - hop + margin, A.flip);
+    const v = vac();
+    // Running, the vacuum hums: its body shakes a pixel up and down.
+    const hum = on && t % 2 ? 1 : 0;
+    drawImage(img, bagFull ? full : vacuum, v.x + margin, v.y - hum + margin, A.flip);
+    // Running: air streaks at the head, flickering.
+    if (on)
+      for (let i = 0; i < 3; i++) {
+        const ax = v.mouth + (A.flip ? -2 - ((t + i) % 3) * 2 : 2 + ((t + i) % 3) * 2);
+        const ay = Y + 28 + i;
+        if ((t + i) % 2 === 0) img.data.set(air, ((ay + margin) * img.width + ax + margin) * 4);
+      }
+    if (B.y + BUG_H >= Y + 31) bug();
+    const out = createImage(view.w, view.h);
+    drawImage(out, img, -margin, -margin);
+    return out;
+  };
+  const add = (n = 1, step?: () => void) => {
+    for (let i = 0; i < n; i++) {
+      step?.();
+      frames.push({ image: shot(), delay: DELAY });
+    }
+  };
+  /** The bug scurries to `x`, `y`, `pace` pixels a frame, legs going. */
+  const scurry = (x: number, y: number, pace: number, each?: () => void) => {
+    B.flip = x < B.x;
+    while (Math.round(B.x) !== x || B.y !== y) {
+      const dx = x - B.x;
+      B.x += Math.sign(dx) * Math.min(pace, Math.abs(dx));
+      if (B.y !== y) B.y += Math.sign(y - B.y);
+      B.img = bugs[++B.step % 2];
+      add(1, each);
+    }
+  };
+  /** Ada pushes the vacuum to `x`, two pixels a frame. */
+  const walk = (to: number, each?: () => void) => {
+    A.flip = to < A.x;
+    for (let i = 1; A.x !== to; i++) {
+      A.x += Math.sign(to - A.x) * Math.min(2, Math.abs(to - A.x));
+      A.pose = `walk-side-${Math.floor(i / 2) % 4}`;
+      add(1, each);
+    }
+    A.pose = 'idle-side';
+  };
+
+  // A quiet afternoon. A bug skitters in from the right.
+  add(4);
+  scurry(78, 84, 3);
+  add(2);
+  // Ada sees it: a start.
+  add(1, () => (hop = 2));
+  hop = 0;
+  add(4);
+  // On goes the vacuum.
+  on = true;
+  add(6);
+  // She goes for it. It runs off to the right.
+  walk(52);
+  scurry(112, 85, 4, () => {
+    if (A.x < 64) A.x += 2;
+    A.pose = `walk-side-${Math.floor(frames.length / 2) % 4}`;
+  });
+  A.pose = 'idle-side';
+  add(3);
+  // It doubles back behind her and on past.
+  scurry(26, 79, 4, () => {
+    if (B.x < A.x + 4) A.flip = true;
+  });
+  scurry(22, 84, 2);
+  add(2);
+  // She chases it down.
+  walk(B.x + 20);
+  // The vacuum pulls it in.
+  const mouth = vac().mouth;
+  for (let i = 0; i < 3; i++) add(1, () => ((B.y = i % 2 ? 83 : 84), (B.img = bugs[i % 2])));
+  B.y = 84;
+  const share = frames.length;
+  if (share !== SHARE_VACUUM)
+    throw new Error(`bug-vacuum: set SHARE_VACUUM to ${share}, the bug at the vacuum's head`);
+  while (Math.round(B.x) + 9 < mouth - 1) add(1, () => (B.x += 3));
+  B.img = sucked;
+  B.x = mouth - 4;
+  B.y = 86;
+  add(1);
+  B.shown = false;
+  bagFull = true;
+  add(4);
+  bagFull = false;
+  add(3);
+  on = false;
+  add(4);
+  // She turns to you, and hops for joy, twice.
+  A.pose = 'idle-down';
+  A.flip = false;
+  add(4);
+  for (let i = 0; i < 2; i++) {
+    for (const h of [2, 3, 2, 0]) add(1, () => (hop = h));
+    add(2);
+  }
+  add(16);
+  frames.push({ image: frames[SHARE_VACUUM].image, delay: 0 });
+  return frames;
+}
+// The share frame and the still: the bug at the running vacuum's head.
+const SHARE_VACUUM = 109;
+
 /**
  * Every release's art. `share` is the GIF frame, counted from 0, that becomes
  * the link preview while that release is the newest one, and `shareLight` is
@@ -2373,7 +2561,9 @@ const ART: {
     frames: (l) => knockThrough(l.knock),
     share: SHARE_KNOCK,
     shareLight: 'day'
-  }
+  },
+  // By day, the bug at the head of Ada's running vacuum.
+  { name: 'bug-vacuum', frames: (l) => bugVacuum(l.knock), share: SHARE_VACUUM, shareLight: 'day' }
 ];
 
 // The link preview's size, and the ink it sits on.
