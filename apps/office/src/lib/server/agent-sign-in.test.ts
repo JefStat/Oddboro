@@ -1244,3 +1244,18 @@ test("in the Linux app, a sign-in starts with the computer's own libraries, so i
       else process.env[k] = before[k];
   }
 });
+
+test("Claude Code's tile knows it is ready on a key, whichever tool is picked", async () => {
+  const was = process.env.OFFICE_AUTH;
+  try {
+    delete process.env.OFFICE_AUTH;
+    assert.equal((await listed()).find((t) => t.id === 'claude')?.keyInUse, undefined);
+    process.env.OFFICE_AUTH = 'key';
+    await pickOffice('codex');
+    assert.equal((await listed()).find((t) => t.id === 'claude')?.keyInUse, true);
+  } finally {
+    if (was === undefined) delete process.env.OFFICE_AUTH;
+    else process.env.OFFICE_AUTH = was;
+    await pickOffice('claude');
+  }
+});
