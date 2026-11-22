@@ -440,6 +440,13 @@ if (args[0] === 'logout') {
 }
 ${SHARED}
 fs.appendFileSync(process.env.CODEX_HOME + '/launches.jsonl', JSON.stringify(args) + '\\n');
+// A thread whose id starts "gone-" has no history on this computer, as after a
+// move to a new Mac (#352): Codex fails the resume in its own words.
+const resumed = args.includes('resume') ? args[args.indexOf('resume') + 1] : '';
+if (resumed.startsWith('gone-')) {
+  process.stderr.write('Error: thread/resume: thread/resume failed: no rollout found for thread id ' + resumed + ' (code -32600)\\n');
+  process.exit(1);
+}
 function emptyFolder(p) {
   try {
     return fs.readdirSync(p).length === 0;
