@@ -1945,7 +1945,10 @@ test("an Odd signs in through the account it is on: its own folder for each, the
   await L.pg`update staff set agent = 'grok', account = null where id = 'gus'`;
   const added: string[] = [];
   try {
-    // Claude Code's Office account, not signed in: the owner's own login, no folder of its own.
+    // Claude Code's Office account, not signed in: the owner's own login, no
+    // folder of its own. The office's own ANTHROPIC_API_KEY (set in the test
+    // office) never counts as a sign-in, since no run gets it (#343).
+    assert.ok(process.env.ANTHROPIC_API_KEY);
     forgetClaudeAccount();
     assert.equal((await chatOf('sam')).configDir, null);
     // Signed in: its own folder from the next run on.

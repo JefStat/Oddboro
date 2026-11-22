@@ -126,12 +126,16 @@ if (process.argv[2] === '--version') {
 }
 const [verb, sub] = process.argv.slice(2);
 if (verb === 'auth' && sub === 'status') {
-  // Signed in only in an account's folder holding a "signed-in" file, which names the email.
+  // Signed in in an account's folder holding a "signed-in" file, which names
+  // the email. Else, as the real one, signed in with no email when it was
+  // given an API key (2.1.330).
   const mark = (process.env.CLAUDE_CONFIG_DIR ?? '/nowhere') + '/signed-in';
   process.stdout.write(
     fs.existsSync(mark)
       ? JSON.stringify({ loggedIn: true, email: fs.readFileSync(mark, 'utf8').trim() }) + '\\n'
-      : '{"loggedIn":false}\\n'
+      : process.env.ANTHROPIC_API_KEY
+        ? '{"loggedIn":true,"authMethod":"api_key"}\\n'
+        : '{"loggedIn":false}\\n'
   );
   process.exit(0);
 }
@@ -406,7 +410,8 @@ chmodSync(join(bin, 'grok'), 0o755);
 // waits for login.go in its home: then it keeps a sign-in whose ID token
 // names owner@example.com and ends. "codex logout" adds a dot to logouts.log.
 // A launch takes the markers every stand-in takes (`SHARED`), failing with
-// turn.failed.
+// turn.failed. "Stay until <file> exists." keeps it running after its reply,
+// as a tool that takes a moment to exit, until that file is there.
 writeFileSync(
   join(bin, 'codex'),
   `#!/usr/bin/env node
@@ -505,6 +510,8 @@ function answer() {
     type: 'turn.completed',
     usage: { input_tokens: 1000, cached_input_tokens: 600, cache_write_input_tokens: 100, output_tokens: 50, reasoning_output_tokens: 20 }
   });
+  const stay = /Stay until (\\/\\S+) exists/.exec(message)?.[1];
+  if (stay) setInterval(() => fs.existsSync(stay) && process.exit(0), 20);
 }
 `
 );

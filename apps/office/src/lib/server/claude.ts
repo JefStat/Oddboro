@@ -144,6 +144,19 @@ export function cleanEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
+/**
+ * `env` with no Anthropic API key, under any case of its name. A run never
+ * gets the key from the owner's own environment (`staffEnv`), so the sign-in
+ * check must not count one either. With one set in Windows, `claude auth
+ * status` said signed in, the Office account read as signed in with no
+ * email, and every run said "Not logged in" (#343). Windows reads a
+ * variable's name in any case, so a `delete` of one spelling could miss it.
+ */
+function withoutHostKey(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  for (const k of Object.keys(env)) if (k.toUpperCase() === 'ANTHROPIC_API_KEY') delete env[k];
+  return env;
+}
+
 export type ClaudeAccount = { email?: string; org?: string; plan?: string };
 
 /** One account's Claude Code folder (`CLAUDE_CONFIG_DIR`): its login, its settings and its sessions. */
@@ -201,7 +214,7 @@ function readStatus(
     }
   };
   probe(cmd, [...before, 'auth', 'status'], {
-    env: dir ? { ...cleanEnv(), CLAUDE_CONFIG_DIR: dir } : cleanEnv(),
+    env: withoutHostKey(dir ? { ...cleanEnv(), CLAUDE_CONFIG_DIR: dir } : cleanEnv()),
     timeout: 15_000
   }).then(
     (r) => done(signedIn(r)),
@@ -268,8 +281,7 @@ export function pluginsOff(): Record<string, false> {
  * that leaked in from a parent session.
  */
 export function staffEnv(claudeDir?: string): NodeJS.ProcessEnv {
-  const env = runEnv('claude');
-  delete env.ANTHROPIC_API_KEY;
+  const env = withoutHostKey(runEnv('claude'));
   if (claudeSettings().auth === 'key') env.ANTHROPIC_API_KEY = apiKey();
   // The account's own Claude Code folder: its login, settings and sessions.
   if (claudeDir) env.CLAUDE_CONFIG_DIR = claudeDir;
