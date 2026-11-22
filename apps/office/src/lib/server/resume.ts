@@ -9,6 +9,14 @@ export type Sections = Record<string, string>;
 /** Where the prompt says the time. Kept out of the comparison, since it changes every run. */
 export const NOW = '{now}';
 
+/**
+ * A resumed run's tool has no session by the saved id: its history is not on
+ * this computer, as after the office moved to a new one (#352). Codex says
+ * "no rollout found for thread id", Claude Code "No conversation found with
+ * session ID".
+ */
+export const SESSION_GONE = /no rollout found for thread id|no conversation found with session id/i;
+
 /** The job description has no heading of its own; in an update it gets this one. */
 const JOB = '## Your job description';
 
