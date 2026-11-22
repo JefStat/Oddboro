@@ -7,8 +7,7 @@
 // long a slow download takes, since one stopped halfway can leave a tool half
 // installed. Server only.
 import { spawn, type ChildProcess } from 'node:child_process';
-import { join } from 'node:path';
-import { currentPlatform } from '@oddboro/ledger/platform';
+import { npmStart } from '@oddboro/ledger/platform';
 
 /** What a slot's command does: install a tool, update it, or sign it in on its page. An update runs to its end, as an install does. */
 export type Action = 'install' | 'update' | 'sign-in';
@@ -39,16 +38,12 @@ const LONGEST_SIGN_IN_MS = 5 * 60_000;
 const SIGN_IN_TOO_LONG = `The sign-in took longer than ${LONGEST_SIGN_IN_MS / 60_000} minutes, so the office stopped it. Try again.`;
 
 /**
- * How a slot starts `cmd`. On Windows npm is npm.cmd, a batch file, which
- * Node starts only through cmd, so Install Codex said "spawn npm ENOENT"
- * (#343). The words are the office's own, never the owner's, so cmd runs
- * nothing it was not given. `/d` skips cmd's AutoRun commands.
+ * How a slot starts `cmd`: npm the way this system starts it (`npmStart`,
+ * through cmd on Windows), every other command as it is. A slot's words are
+ * the office's own, never the owner's.
  */
-export function startable(cmd: string, args: readonly string[]): [string, string[]] {
-  if (cmd !== 'npm' || currentPlatform() !== 'win32') return [cmd, [...args]];
-  const system = process.env.SystemRoot ?? 'C:\\Windows';
-  return [join(system, 'System32', 'cmd.exe'), ['/d', '/c', 'npm', ...args]];
-}
+export const startable = (cmd: string, args: readonly string[]): [string, string[]] =>
+  cmd === 'npm' ? npmStart(args) : [cmd, [...args]];
 
 /** Every command a slot started that is still going. */
 const going = new Set<ChildProcess>();

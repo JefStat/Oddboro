@@ -387,6 +387,18 @@ export function rulePath(path: string): string {
 }
 
 /**
+ * How to start npm with `args`. On Windows npm is npm.cmd, a batch file,
+ * which Node starts only through cmd, so a spawn by name said "spawn npm
+ * ENOENT" (#343). `/d` skips cmd's AutoRun commands. Only the office's own
+ * words go in `args`, since cmd reads them.
+ */
+export function npmStart(args: readonly string[]): [string, string[]] {
+  if (currentPlatform() !== 'win32') return ['npm', [...args]];
+  const system = process.env.SystemRoot ?? 'C:\\Windows';
+  return [join(system, 'System32', 'cmd.exe'), ['/d', '/c', 'npm', ...args]];
+}
+
+/**
  * How Claude Code starts a tool server's command. On Windows `npx` is a batch
  * file, which only cmd can run, so it goes through `cmd /c` there.
  */
