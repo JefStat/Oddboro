@@ -26,15 +26,17 @@ export type Release = {
 
 export const RELEASES: Release[] = [
   {
-    version: '0.0.13',
+    version: '0.0.14',
     date: '2026-11-22',
-    title: 'Bug fixes for Windows, and a progress bar for ledger search.',
+    title: 'Bug fixes for Windows, and for moving to a new computer.',
     summary:
-      'On Windows, Odds on Claude Code sign in again, Codex installs from Setup, and the office finishes its work on Codex. Ledger search shows how much of its download has arrived.',
+      'On Windows, Odds on Claude Code sign in again and Codex installs and runs. Odds keep chatting after you move your office to a new computer. This release includes the fixes from 0.0.13.',
     notes: [
       'On Windows, Odds on Claude Code no longer fail with "Not logged in" when the computer has an Anthropic API key set.',
       'On Windows, Install and Update for Codex work, in place of "spawn npm ENOENT".',
+      'On Windows, Oddboro finds a Codex you installed yourself, wherever npm, pnpm or Yarn put it.',
       'On Windows, hiring an Odd, drawing a look and designing an office on Codex no longer fail partway.',
+      'Odds on Codex and Claude Code keep chatting after you move your office to a new computer, in place of failing with "no rollout found".',
       "Ledger search's download shows how much has arrived.",
       'In Setup, Claude Code says Ready when it is signed in, whichever tool you pick for the office.'
     ],
