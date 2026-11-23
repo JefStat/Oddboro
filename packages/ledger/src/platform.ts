@@ -353,15 +353,19 @@ export function claudeCommand(): [string, string[]] {
  * script run under this Node, since Node will not start a .cmd without a
  * shell. `pkg` is the package's folder under node_modules: beside the shim,
  * where npm puts it, or wherever the shim's own script line names inside it,
- * as pnpm, Yarn and a moved npm folder write it (#343). Undefined when
- * neither is there.
+ * as pnpm, Yarn and a moved npm folder write it (#343). npm's own global
+ * folder (`npmPrefix`) is searched last, since the office's PATH can lack it
+ * even when the owner's terminal has it. Undefined when neither is there.
  */
 export function npmCommand(
   command: string,
   pkg: string[],
   extra: string[] = []
 ): [string, string[]] | undefined {
-  const dirs = [...(process.env.PATH ?? '').split(delimiter).filter(Boolean), ...extra];
+  const dirs = [...(process.env.PATH ?? '').split(delimiter), ...extra, npmPrefix()]
+    // cmd and PowerShell accept a PATH entry in quotes; join does not.
+    .map((d) => d.trim().replace(/^"(.*)"$/, '$1'))
+    .filter(Boolean);
   for (const dir of dirs) {
     const exe = join(dir, `${command}.exe`);
     if (existsSync(exe)) return [exe, []];
@@ -372,6 +376,41 @@ export function npmCommand(
     if (entry) return /\.[cm]?js$/.test(entry) ? [process.execPath, [entry]] : [entry, []];
   }
   return undefined;
+}
+
+/**
+ * The folder where npm puts a global install's commands on Windows: the
+ * `prefix` npm is set to, from npm_config_prefix or the owner's .npmrc (where
+ * `npm config set prefix` writes it), else npm's own %APPDATA%\npm. An owner
+ * who points npm at D:\Tools\npm-global and adds it to PATH in a PowerShell
+ * profile only has Codex there, on a PATH the office never sees, so Install
+ * said "installed, but the office cannot find it yet" (#343).
+ */
+export function npmPrefix(): string {
+  const env = process.env;
+  const set =
+    env.npm_config_prefix ||
+    npmrcValue(env.npm_config_userconfig || join(homedir(), '.npmrc'), 'prefix');
+  return set ? resolve(set) : join(env.APPDATA || join(homedir(), 'AppData', 'Roaming'), 'npm');
+}
+
+/**
+ * One key's value in an .npmrc, as npm reads it: quotes off, `${NAME}` from
+ * the environment, and `~` for the home folder. Undefined when it is not set.
+ */
+function npmrcValue(file: string, key: string): string | undefined {
+  let text: string;
+  try {
+    text = readFileSync(file, 'utf8');
+  } catch {
+    return undefined;
+  }
+  const line = text.match(new RegExp(`^\\s*${key}\\s*=(.*)$`, 'm'))?.[1].trim();
+  if (!line) return undefined;
+  return line
+    .replace(/^"(.*)"$/, '$1')
+    .replace(/\$\{([^}?]+)\??\}/g, (_, name: string) => process.env[name] ?? '')
+    .replace(/^~(?=$|[\\/])/, homedir());
 }
 
 /** The file a package's package.json names for `command`, or undefined with no package there. */

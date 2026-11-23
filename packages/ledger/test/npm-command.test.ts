@@ -55,3 +55,46 @@ test("a shim whose script is missing, or is not the tool's package, does not cou
   onPath(`"%~dp0\\${other}"`, [other], () => assert.equal(npmCommand('codex', CODEX), undefined));
   onPath('', [], () => assert.equal(npmCommand('codex', CODEX), undefined));
 });
+
+/** Runs `fn` with these environment variables set, and puts them back after. */
+function withEnv(vars: Record<string, string>, fn: () => void): void {
+  const saved = Object.fromEntries(Object.keys(vars).map((k) => [k, process.env[k]]));
+  Object.assign(process.env, vars);
+  try {
+    fn();
+  } finally {
+    for (const [k, v] of Object.entries(saved))
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+  }
+}
+
+test("npm's own global folder counts when the office's PATH lacks it", () => {
+  const home = mkdtempSync(join(tmpdir(), 'npm-prefix-'));
+  const prefix = join(home, 'npm-global');
+  const script = join(prefix, 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
+  mkdirSync(join(script, '..'), { recursive: true });
+  writeFileSync(join(script, '..', '..', 'package.json'), '{"bin":{"codex":"bin/codex.js"}}');
+  writeFileSync(script, '');
+  writeFileSync(join(prefix, 'codex.cmd'), '');
+  const npmrc = join(home, '.npmrc');
+  try {
+    // Set with `npm config set prefix`, which writes it to the owner's .npmrc.
+    writeFileSync(npmrc, `registry=https://registry.npmjs.org/\r\nprefix=${prefix}\r\n`);
+    withEnv({ PATH: join(home, 'empty'), npm_config_userconfig: npmrc }, () =>
+      assert.deepEqual(npmCommand('codex', CODEX), [process.execPath, [script]])
+    );
+    // In quotes, and through a variable.
+    writeFileSync(npmrc, `prefix = "\${ODDBORO_TEST_HOME}${prefix.slice(home.length)}"\n`);
+    withEnv(
+      { PATH: join(home, 'empty'), npm_config_userconfig: npmrc, ODDBORO_TEST_HOME: home },
+      () => assert.deepEqual(npmCommand('codex', CODEX), [process.execPath, [script]])
+    );
+    // A PATH entry in quotes, as cmd and PowerShell accept it.
+    withEnv({ PATH: `"${prefix}"`, npm_config_prefix: join(home, 'empty') }, () =>
+      assert.deepEqual(npmCommand('codex', CODEX), [process.execPath, [script]])
+    );
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
