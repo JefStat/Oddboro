@@ -1,13 +1,14 @@
 // What differs between operating systems, in one place: where logs go, how a
-// page or a file opens, and how a login service runs. Each system gets
-// one entry in the tables below. A Mac uses launchd and ~/Library/Logs, Linux
-// a systemd user unit and the XDG state folder, and Windows a Task Scheduler
-// task and %LOCALAPPDATA%\Oddboro. Everything else in the office is the same
-// code on each.
+// page or a file opens, how a login service runs, and the environment a host
+// program gets inside an AppImage. Each system gets one entry in the tables
+// below. A Mac uses launchd and ~/Library/Logs, Linux a systemd user unit and
+// the XDG state folder, and Windows a Task Scheduler task and
+// %LOCALAPPDATA%\Oddboro. Everything else in the office is the same code on
+// each.
 import { execFile, execFileSync, spawn, type ExecFileException } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { delimiter, join, resolve, sep } from 'node:path';
 
 export type System = 'mac' | 'linux' | 'windows';
 
@@ -32,6 +33,68 @@ export const SYSTEM = currentSystem();
 export const MAC = SYSTEM === 'mac';
 export const LINUX = SYSTEM === 'linux';
 export const WINDOWS = SYSTEM === 'windows';
+
+/**
+ * Names an AppImage runtime may have used to keep a variable from before it
+ * started. The long name is the usual one. The short name is the other
+ * spelling. The first that is set wins, and an empty value means it was unset.
+ */
+const SAVED_LIBRARY_PATH = ['APPIMAGE_ORIGINAL_LD_LIBRARY_PATH', 'APPIMAGE_ORIG_LD_LIBRARY_PATH'];
+const SAVED_PRELOAD = ['APPIMAGE_ORIGINAL_LD_PRELOAD', 'APPIMAGE_ORIG_LD_PRELOAD'];
+
+/**
+ * The environment for a program that ships with the computer, such as
+ * notify-send, xdg-open, secret-tool or zenity. Outside an AppImage this is
+ * `base` itself. Inside one, the runtime points LD_LIBRARY_PATH at the glib
+ * it bundled, which is older than the host's, so those programs fail to
+ * start. This puts back the values from before the AppImage started, or
+ * removes them, and takes the AppImage's own folders off PATH.
+ */
+export function hostEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  if (!base.APPIMAGE && !base.APPDIR) return base;
+  const env: NodeJS.ProcessEnv = { ...base };
+  restoreOrClear(env, 'LD_LIBRARY_PATH', SAVED_LIBRARY_PATH);
+  restoreOrClear(env, 'LD_PRELOAD', SAVED_PRELOAD);
+  if (base.APPDIR && env.PATH) env.PATH = withoutAppDir(env.PATH, base.APPDIR);
+  return env;
+}
+
+function restoreOrClear(
+  env: NodeJS.ProcessEnv,
+  key: 'LD_LIBRARY_PATH' | 'LD_PRELOAD',
+  names: readonly string[]
+) {
+  let found = false;
+  let value: string | undefined;
+  for (const name of names) {
+    if (!Object.hasOwn(env, name)) continue;
+    found = true;
+    value = env[name];
+    break;
+  }
+  if (found && value) env[key] = value;
+  else delete env[key];
+}
+
+/** A path without its trailing slashes. A loop, since a regex here is slow on a long run of them. */
+function trimSlashes(path: string): string {
+  let end = path.length;
+  while (end > 0 && path[end - 1] === '/') end--;
+  return path.slice(0, end);
+}
+
+/** PATH with every entry inside the AppImage mount taken out. */
+function withoutAppDir(path: string, appdir: string): string {
+  const root = trimSlashes(appdir);
+  if (!root) return path;
+  return path
+    .split(delimiter)
+    .filter((entry) => {
+      const dir = trimSlashes(entry);
+      return dir !== root && !dir.startsWith(`${root}/`);
+    })
+    .join(delimiter);
+}
 
 /**
  * Where the office's logs go. XDG_STATE_HOME wins wherever it is set;
@@ -94,7 +157,12 @@ export function probe(
       const child = execFile(
         cmd,
         args,
-        { ...options, encoding: 'utf8', ...(showWindow ? {} : { windowsHide: true }) },
+        {
+          ...options,
+          env: hostEnv(options.env ?? process.env),
+          encoding: 'utf8',
+          ...(showWindow ? {} : { windowsHide: true })
+        },
         (e, out, err) => done(e ? ended(e, out, err) : { status: 'ok', out, err })
       );
       // stdin always closes, with or without input, so a command that reads
@@ -155,7 +223,7 @@ const psScript = (script: string) =>
 export function powershellSync(script: string, env: Record<string, string> = {}, input?: string) {
   return execFileSync('powershell.exe', [...POWERSHELL, '-Command', psScript(script)], {
     encoding: 'utf8',
-    env: { ...process.env, ...env },
+    env: { ...hostEnv(), ...env },
     input,
     stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     windowsHide: true
@@ -237,7 +305,11 @@ export const OPENER_FAILS_WITHIN_MS = 1_000;
  */
 export function openFile(path: string): Promise<boolean> {
   return new Promise((done) => {
-    const child = spawn(OPEN, [...OPEN_WORDS, path], { detached: true, stdio: 'ignore' });
+    const child = spawn(OPEN, [...OPEN_WORDS, path], {
+      detached: true,
+      stdio: 'ignore',
+      env: hostEnv()
+    });
     const working = setTimeout(() => done(true), OPENER_FAILS_WITHIN_MS);
     const failed = (why: unknown) => {
       clearTimeout(working);
@@ -279,29 +351,96 @@ export function claudeCommand(): [string, string[]] {
  * How to start an npm-installed tool on Windows, found on the PATH (and in
  * `extra` folders): its own .exe when there is one, else its .cmd shim's
  * script run under this Node, since Node will not start a .cmd without a
- * shell. `pkg` is the package's folder under node_modules. Undefined when
- * neither is there.
+ * shell. `pkg` is the package's folder under node_modules: beside the shim,
+ * where npm puts it, or wherever the shim's own script line names inside it,
+ * as pnpm, Yarn and a moved npm folder write it (#343). npm's own global
+ * folder (`npmPrefix`) is searched last, since the office's PATH can lack it
+ * even when the owner's terminal has it. Undefined when neither is there.
  */
 export function npmCommand(
   command: string,
   pkg: string[],
   extra: string[] = []
 ): [string, string[]] | undefined {
-  const dirs = [...(process.env.PATH ?? '').split(delimiter).filter(Boolean), ...extra];
+  const dirs = [...(process.env.PATH ?? '').split(delimiter), ...extra, npmPrefix()]
+    // cmd and PowerShell accept a PATH entry in quotes; join does not.
+    .map((d) => d.trim().replace(/^"(.*)"$/, '$1'))
+    .filter(Boolean);
   for (const dir of dirs) {
     const exe = join(dir, `${command}.exe`);
     if (existsSync(exe)) return [exe, []];
-    if (!existsSync(join(dir, `${command}.cmd`))) continue;
-    const folder = join(dir, 'node_modules', ...pkg);
-    try {
-      const { bin } = JSON.parse(readFileSync(join(folder, 'package.json'), 'utf8')) as {
-        bin?: string | Record<string, string>;
-      };
-      const entry = join(folder, typeof bin === 'string' ? bin : (bin?.[command] ?? 'cli.js'));
-      return /\.[cm]?js$/.test(entry) ? [process.execPath, [entry]] : [entry, []];
-    } catch {
-      // A shim with no package beside it: keep looking.
-    }
+    const shim = join(dir, `${command}.cmd`);
+    if (!existsSync(shim)) continue;
+    const entry = packageEntry(join(dir, 'node_modules', ...pkg), command) ?? shimEntry(shim, pkg);
+    // A shim with no package it names: keep looking.
+    if (entry) return /\.[cm]?js$/.test(entry) ? [process.execPath, [entry]] : [entry, []];
+  }
+  return undefined;
+}
+
+/**
+ * The folder where npm puts a global install's commands on Windows: the
+ * `prefix` npm is set to, from npm_config_prefix or the owner's .npmrc (where
+ * `npm config set prefix` writes it), else npm's own %APPDATA%\npm. An owner
+ * who points npm at D:\Tools\npm-global and adds it to PATH in a PowerShell
+ * profile only has Codex there, on a PATH the office never sees, so Install
+ * said "installed, but the office cannot find it yet" (#343).
+ */
+export function npmPrefix(): string {
+  const env = process.env;
+  const set =
+    env.npm_config_prefix ||
+    npmrcValue(env.npm_config_userconfig || join(homedir(), '.npmrc'), 'prefix');
+  return set ? resolve(set) : join(env.APPDATA || join(homedir(), 'AppData', 'Roaming'), 'npm');
+}
+
+/**
+ * One key's value in an .npmrc, as npm reads it: quotes off, `${NAME}` from
+ * the environment, and `~` for the home folder. Undefined when it is not set.
+ */
+function npmrcValue(file: string, key: string): string | undefined {
+  let text: string;
+  try {
+    text = readFileSync(file, 'utf8');
+  } catch {
+    return undefined;
+  }
+  const line = text.match(new RegExp(`^\\s*${key}\\s*=(.*)$`, 'm'))?.[1].trim();
+  if (!line) return undefined;
+  return line
+    .replace(/^"(.*)"$/, '$1')
+    .replace(/\$\{([^}?]+)\??\}/g, (_, name: string) => process.env[name] ?? '')
+    .replace(/^~(?=$|[\\/])/, homedir());
+}
+
+/** The file a package's package.json names for `command`, or undefined with no package there. */
+function packageEntry(folder: string, command: string): string | undefined {
+  try {
+    const { bin } = JSON.parse(readFileSync(join(folder, 'package.json'), 'utf8')) as {
+      bin?: string | Record<string, string>;
+    };
+    return join(folder, typeof bin === 'string' ? bin : (bin?.[command] ?? 'cli.js'));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The script a .cmd shim runs, when it is a file inside `pkg` that is there.
+ * A shim names it in quotes, from the shim's own folder (`%dp0%\` or
+ * `%~dp0\`) or as a full path.
+ */
+function shimEntry(shim: string, pkg: string[]): string | undefined {
+  let text: string;
+  try {
+    text = readFileSync(shim, 'utf8');
+  } catch {
+    return undefined;
+  }
+  const inside = `${sep}${join('node_modules', ...pkg)}${sep}`.toLowerCase();
+  for (const [, from, path] of text.matchAll(/"(%~dp0\\?|%dp0%\\?)?([^"%]+\.[cm]?js)"/gi)) {
+    const file = from ? resolve(join(shim, '..'), path) : path;
+    if (resolve(file).toLowerCase().includes(inside) && existsSync(file)) return file;
   }
   return undefined;
 }
@@ -312,6 +451,18 @@ export function npmCommand(
  */
 export function rulePath(path: string): string {
   return `/${path.replaceAll('\\', '/').replace(/^([A-Za-z]):/, (_, d: string) => `/${d.toLowerCase()}`)}`;
+}
+
+/**
+ * How to start npm with `args`. On Windows npm is npm.cmd, a batch file,
+ * which Node starts only through cmd, so a spawn by name said "spawn npm
+ * ENOENT" (#343). `/d` skips cmd's AutoRun commands. Only the office's own
+ * words go in `args`, since cmd reads them.
+ */
+export function npmStart(args: readonly string[]): [string, string[]] {
+  if (currentPlatform() !== 'win32') return ['npm', [...args]];
+  const system = process.env.SystemRoot ?? 'C:\\Windows';
+  return [join(system, 'System32', 'cmd.exe'), ['/d', '/c', 'npm', ...args]];
 }
 
 /**
@@ -349,7 +500,7 @@ const xml = (s: string) =>
 const quoted = (s: string) => `"${s.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
 const quietly = (cmd: string, args: string[]) => {
   try {
-    execFileSync(cmd, args, { stdio: 'ignore' });
+    execFileSync(cmd, args, { stdio: 'ignore', env: hostEnv() });
   } catch {
     // Not running.
   }

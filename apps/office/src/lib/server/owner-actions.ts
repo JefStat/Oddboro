@@ -69,6 +69,9 @@ export const OWNER_ACTIONS = {
     notAnAction: "Writes the page's boot or error to the log on this computer; no record changes."
   },
   'PUT /api/diagnostics': { notAnAction: SETUP },
+  // The weather place and unit, kept in .env with the office settings.
+  'PUT /api/weather': { notAnAction: SETUP },
+  'DELETE /api/weather': { notAnAction: SETUP },
   'POST /api/diagnostics/envelope': {
     notAnAction: "Passes the page's error report through the office's filter; nothing is kept."
   },
@@ -128,6 +131,11 @@ export const OWNER_ACTIONS = {
   },
   'POST /api/jobs/[id]': { none: NO_ROW },
   'DELETE /api/jobs/away': { none: "Takes the jobs off the desk's While you were away card." },
+  // Clear closes an item the way its own end would; Delete and Restore each add one decision.
+  'POST /api/items': {
+    mayRecord: ['decision', 'work'],
+    when: "Clear writes what the item's own end writes: a decision for an ask (the office's set-aside no), a work row for a task dropped, nothing for a report. Delete adds one decision per item, and Restore one."
+  },
   'PATCH /api/lessons/[id]': { records: 'decision' },
   'POST /api/looks': {
     notAnAction: 'Draws a look for the hire window; nothing is kept until a hire.'
@@ -140,6 +148,8 @@ export const OWNER_ACTIONS = {
   },
   'PUT /api/office/design': { records: 'work' },
   'POST /api/office/layouts/[id]': { records: 'work' },
+  'DELETE /api/office/layouts/[id]': { records: 'work' },
+  'POST /api/office/layouts/[id]/undo': { records: 'work' },
   'POST /api/office/move-in': { records: 'work' },
   'POST /api/onboarding': {
     mayRecord: ['hire', 'work'],

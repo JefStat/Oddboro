@@ -2,7 +2,7 @@
 // Run with `npm test -w @oddboro/office`.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { streamTools } from './claude.ts';
+import { claudeReader, streamTools } from './claude.ts';
 import { codexReader } from './codex.ts';
 import { toolWords } from '../staff/work.ts';
 
@@ -30,4 +30,39 @@ test("a Codex shell command reaches the floor as Claude Code's Bash, and Grok lo
   });
   assert.deepEqual(codex, [{ type: 'tool', name: 'Bash' }]);
   assert.deepEqual(streamTools('grok', started('search_tool')), ['ToolSearch']);
+});
+
+test("Claude Code's and Codex's usage names the session it totals, and Grok's does not", () => {
+  const result = {
+    type: 'result',
+    subtype: 'success',
+    session_id: 's1',
+    modelUsage: { 'claude-opus-5-5': { inputTokens: 4, cacheReadInputTokens: 4011 } }
+  };
+  const usageOf = (events: ReturnType<ReturnType<typeof claudeReader>>) =>
+    events.flatMap((e) => (e.type === 'usage' ? [e.session] : []));
+  assert.deepEqual(usageOf(claudeReader('claude')(result)), ['s1']);
+  assert.deepEqual(usageOf(claudeReader('grok')(result)), [undefined]);
+  const codex = codexReader('gpt');
+  codex({ type: 'thread.started', thread_id: 't1' });
+  assert.deepEqual(
+    usageOf(
+      codex({ type: 'turn.completed', usage: { input_tokens: 37973, cached_input_tokens: 27392 } })
+    ),
+    ['t1']
+  );
+});
+
+test("Claude Code's model call says how many tokens it read, its session's size then", () => {
+  const events = claudeReader('claude')({
+    type: 'assistant',
+    message: {
+      content: [],
+      usage: { input_tokens: 2, cache_read_input_tokens: 81_000, cache_creation_input_tokens: 500 }
+    }
+  });
+  assert.deepEqual(
+    events.filter((e) => e.type === 'context'),
+    [{ type: 'context', tokens: 81_502 }]
+  );
 });

@@ -1,5 +1,5 @@
 // Token usage, the owner's plan and its window, and the owner's name and welcome.
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sum } from 'drizzle-orm';
 import { db, sql as pg } from './db.ts';
 import { fixedError } from './errors.ts';
 import { type Db } from './threads.ts';
@@ -8,7 +8,10 @@ import { zone } from './time.ts';
 
 // Usage and the plan
 
-/** One run's token counts, per model, as Claude Code's result reports them. */
+/**
+ * Token counts per model, in the shape of Claude Code's result: one run's, or
+ * the whole session's so far on a tool that reports a running total.
+ */
 export type ModelUsage = Record<
   string,
   {
@@ -20,19 +23,101 @@ export type ModelUsage = Record<
   }
 >;
 
-/** `staffId` is null for a run as the office itself. */
-export async function recordUsage(staffId: string | null, kind: UsageKind, byModel: ModelUsage) {
-  const rows = Object.entries(byModel).map(([model, u]) => ({
-    staffId,
-    kind,
-    model,
-    inputTokens: u.inputTokens ?? 0,
-    outputTokens: u.outputTokens ?? 0,
-    cacheReadTokens: u.cacheReadInputTokens ?? 0,
-    cacheWriteTokens: u.cacheCreationInputTokens ?? 0,
-    costUsd: u.costUSD ?? 0
-  }));
+/** One model's counts, as a usage row keeps them. */
+export type UsageCounts = {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  costUsd: number;
+};
+const TOKENS = ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens'] as const;
+
+const countsOf = (u: ModelUsage[string]): UsageCounts => ({
+  inputTokens: u.inputTokens ?? 0,
+  outputTokens: u.outputTokens ?? 0,
+  cacheReadTokens: u.cacheReadInputTokens ?? 0,
+  cacheWriteTokens: u.cacheCreationInputTokens ?? 0,
+  costUsd: u.costUSD ?? 0
+});
+
+/**
+ * A run's own share of a session's running total: the total less what the
+ * session's earlier runs already counted. A total below what was counted means
+ * the tool began counting again, so the whole total is the run's own.
+ */
+export function runShare(total: UsageCounts, counted: UsageCounts | undefined): UsageCounts {
+  if (!counted || TOKENS.some((k) => total[k] < counted[k])) return total;
+  return {
+    inputTokens: total.inputTokens - counted.inputTokens,
+    outputTokens: total.outputTokens - counted.outputTokens,
+    cacheReadTokens: total.cacheReadTokens - counted.cacheReadTokens,
+    cacheWriteTokens: total.cacheWriteTokens - counted.cacheWriteTokens,
+    costUsd: Math.max(0, total.costUsd - counted.costUsd)
+  };
+}
+
+/** Each session's latest recording, so the next one reads the session after it is written. */
+const recording = new Map<string, Promise<number>>();
+
+/**
+ * Keep one run's tokens. `staffId` is null for a run as the office itself.
+ * `session` names the session when the tool reports a running total for it,
+ * as Claude Code and Codex do once a session is resumed. Each row then holds
+ * the run's own share (`runShare`), so no earlier run counts twice.
+ * Resolves to the tokens the run read, its input in every form, which a
+ * chat weighs to know when its session has grown too long (chat-run.ts).
+ * `label` says what the run was for, for the Odd's list of recent runs.
+ */
+export function recordUsage(
+  staffId: string | null,
+  kind: UsageKind,
+  byModel: ModelUsage,
+  session?: string,
+  label?: string
+): Promise<number> {
+  if (!session) return keepUsage(staffId, kind, byModel, undefined, label);
+  const next = (recording.get(session) ?? Promise.resolve())
+    .catch(() => {})
+    .then(() => keepUsage(staffId, kind, byModel, session, label));
+  recording.set(session, next);
+  const done = () => {
+    if (recording.get(session) === next) recording.delete(session);
+  };
+  next.then(done, done);
+  return next;
+}
+
+async function keepUsage(
+  staffId: string | null,
+  kind: UsageKind,
+  byModel: ModelUsage,
+  session?: string,
+  label?: string
+): Promise<number> {
+  const counted = new Map<string, UsageCounts>();
+  if (session)
+    for (const { model, ...c } of await db
+      .select({
+        model: usage.model,
+        inputTokens: sum(usage.inputTokens).mapWith(Number),
+        outputTokens: sum(usage.outputTokens).mapWith(Number),
+        cacheReadTokens: sum(usage.cacheReadTokens).mapWith(Number),
+        cacheWriteTokens: sum(usage.cacheWriteTokens).mapWith(Number),
+        costUsd: sum(usage.costUsd).mapWith(Number)
+      })
+      .from(usage)
+      .where(eq(usage.session, session))
+      .groupBy(usage.model))
+      counted.set(model, c);
+  const rows = Object.entries(byModel).flatMap(([model, u]) => {
+    const own = runShare(countsOf(u), counted.get(model));
+    // A model only an earlier run of the session used adds nothing now.
+    if (counted.has(model) && TOKENS.every((k) => own[k] === 0)) return [];
+    return [{ staffId, kind, model, session: session ?? null, label: label ?? null, ...own }];
+  });
   if (rows.length) await db.insert(usage).values(rows);
+  return rows.reduce((n, r) => n + r.inputTokens + r.cacheReadTokens + r.cacheWriteTokens, 0);
 }
 
 /** The plan's one row in plan_limits: the owner's Claude plan, whose windows each run reports. */
@@ -174,4 +259,46 @@ export async function usageFor(staffId: string) {
     buckets('1 day', 30, 'day')
   ]);
   return { totals: { d1, d7, d30 }, series: { d1: h24, d7: w7, d30: m30 } };
+}
+
+/** One run's tokens: its rows, one per model, share the moment they were kept. */
+export type RunUsage = { at: string; kind: UsageKind; label: string | null; tokens: number };
+
+/** A staffer's latest runs, newest first, each with its tokens. */
+export async function recentRuns(staffId: string, limit = 20): Promise<RunUsage[]> {
+  return (await pg`
+    select created_at as at, kind, label, sum(tokens)::float8 as tokens
+    from usage
+    where staff_id = ${staffId}
+    group by created_at, kind, label
+    order by created_at desc
+    limit ${limit}`) as unknown as RunUsage[];
+}
+
+/**
+ * One Odd's share of the office's tokens. `staffId` and `name` are null for
+ * the office's own runs, like drawing a look. An Odd that left keeps its name.
+ */
+export type OddUsage = {
+  staffId: string | null;
+  name: string | null;
+  tokens: number;
+  runs: number;
+};
+
+/** Every Odd's tokens over the last day and week, most first, so the owner sees who uses the plan most. */
+export async function officeUsage(): Promise<Record<'d1' | 'd7', OddUsage[]>> {
+  const ranked = async (interval: string) =>
+    (await pg`
+      select u.staff_id as "staffId",
+             s.name,
+             sum(u.tokens)::float8 as tokens,
+             count(distinct u.created_at)::int as runs
+      from usage u
+      left join staff s on s.id = u.staff_id
+      where u.created_at > now() - ${interval}::interval
+      group by u.staff_id, s.name
+      order by tokens desc`) as unknown as OddUsage[];
+  const [d1, d7] = await Promise.all([ranked('24 hours'), ranked('7 days')]);
+  return { d1, d7 };
 }

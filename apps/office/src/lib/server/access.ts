@@ -158,6 +158,27 @@ async function builtin(c: ConnectorRow): Promise<Client> {
   return client;
 }
 
+/** How the owner gives a server added by its address a key, when it wants one. */
+const TAKES_A_KEY =
+  "If its setup guide gives you a key instead, open the Odd's Settings, then Services, click + Add service, paste the server's address, and pick Takes a key.";
+
+/**
+ * Connect's error for the owner. A server added by its address with no key
+ * box that turns the office away most likely wants a key, so the error says
+ * how to give it one (issue #305).
+ */
+export async function connectProblem(id: string, e: unknown): Promise<string> {
+  const said = e instanceof Error ? e.message : String(e);
+  const c = await connector(id);
+  const addressOnly =
+    c?.kind === 'http' &&
+    c.id !== POSTAL_ID &&
+    !c.registry &&
+    !c.config.google &&
+    !c.config.headers?.length;
+  return addressOnly ? `${said} ${TAKES_A_KEY}` : said;
+}
+
 /** Start a connector with its secrets and list its tools, marking the ones a Read only grant reaches (`readsOnly`). */
 export async function listTools(id: string, open = false): Promise<ToolInfo[]> {
   const c = await connector(id);
@@ -178,17 +199,26 @@ export async function listTools(id: string, open = false): Promise<ToolInfo[]> {
 /**
  * The owner confirmed the tools: the connector is ready. The office lists
  * them again itself and works out which ones Read only reaches, so nothing
- * the page sends can add a tool that changes something.
+ * the page sends can add a tool that changes something. A service that lists
+ * none is not connected: a server that turned down its key can answer with an
+ * empty list, and confirming it left a tool with 0 tools (issue #305). Gives
+ * the line the step keeps, so the owner sees what connected.
  */
-export async function confirmTools(id: string): Promise<void> {
+export async function confirmTools(id: string): Promise<string> {
   if (id === POSTAL_ID) throw new Error('Choose the physical mailbox first.');
   const tools = await listTools(id);
+  if (!tools.length)
+    throw new Error(
+      'The service listed no tools, so nothing connected. Check the key or account, then click Connect again.'
+    );
   await connectorReady(
     id,
     tools.map((t) => t.name),
     tools.filter((t) => t.readOnly).map((t) => t.name),
     notesOf(tools)
   );
+  const reads = tools.filter((t) => t.readOnly).length;
+  return `Connected: ${tools.length} ${tools.length === 1 ? 'tool' : 'tools'}, ${reads} that only ${reads === 1 ? 'reads' : 'read'}.`;
 }
 
 /**
@@ -226,7 +256,7 @@ export async function hostedSignIn(id: string): Promise<{ url?: string }> {
       // Neither a sign-in nor an open door: most likely it takes a key.
       const why = signInError instanceof Error ? signInError.message : String(signInError);
       throw new Error(
-        `This server did not offer a sign-in${why ? ` (${why})` : ''}. If its setup guide gives you a key instead, open the Odd's Settings, then Services, click + Add service, paste the server's address, and pick Takes a key.`
+        `This server did not offer a sign-in${why ? ` (${why})` : ''}. ${TAKES_A_KEY}`
       );
     }
     const c = await connector(id);

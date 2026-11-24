@@ -29,11 +29,14 @@
   import { describe } from '@oddboro/ledger/time';
   import { tickable, yesOrNo } from '@oddboro/ledger/tools';
   import type { DeskItem } from '@oddboro/ledger/desk-answers';
-  import { untrack } from 'svelte';
+  import { untrack, type Snippet } from 'svelte';
+  import Fold from './Fold.svelte';
   import GoalProposal from './GoalProposal.svelte';
   import { LEVEL_LABEL, type FolderAccess } from '@oddboro/ledger/access';
   import type { StaffProfile } from '../staff/roster.ts';
   import { chatAnswer, stepText, stepsToGo } from './task-steps.ts';
+  import { orderItems } from '@oddboro/ledger/desk-order';
+  import type { GoalsWindow } from '@oddboro/ledger';
   import { yesSaid } from './yes-said.ts';
 
   type Props = {
@@ -47,8 +50,32 @@
     onplan: (hires: AskRow[]) => void;
     /** Open a staffer's card, from the name on an item. */
     onstaff: (id: string) => void;
+    /**
+     * One item alone, as its own page in the pane or under its card in a
+     * chat: no list, no way back to it, and `ondone` once the item is answered.
+     */
+    single?: boolean;
+    ondone?: () => void;
+    /** Bumps when goals or threads change, so the list groups again. */
+    version?: number;
+    /** Bumps to go back to the list from an open item, as D does. */
+    home?: number;
+    /** What the Odds tab shows under Waiting: Your Odds. */
+    after?: Snippet;
   };
-  let { desk, staff, focus, onhire, onplan, onstaff }: Props = $props();
+  let {
+    desk,
+    staff,
+    focus,
+    onhire,
+    onplan,
+    onstaff,
+    single = false,
+    ondone,
+    version = 0,
+    home = 0,
+    after
+  }: Props = $props();
 
   /** The row each kind of desk item shows. */
   type DeskRow = { ask: AskRow; task: TaskRow; report: ReportRow };
@@ -89,6 +116,54 @@
     ].sort((a, b) => a.at.localeCompare(b.at))
   );
 
+  /** Each waiting item's goal, by item key, from the goals window; the rest is Other work. */
+  let goalOf = $state<Record<string, string>>({});
+  $effect(() => {
+    void version;
+    if (single) return;
+    call<GoalsWindow>('/api/goals')
+      .then((w) => {
+        const m: Record<string, string> = {};
+        for (const g of w.goals)
+          for (const t of g.threads) for (const x of t.waiting) m[`${x.kind}-${x.id}`] = g.title;
+        goalOf = m;
+      })
+      .catch(() => {});
+  });
+  /** What waits, in the order to do it: ready first, then what unblocks most, then oldest. */
+  const ordered = $derived(
+    orderItems(
+      items.map((i) => ({
+        ...i,
+        id: i.row.id,
+        createdAt: i.at,
+        needs: i.kind === 'report' ? [] : (i.row.needs ?? [])
+      }))
+    )
+  );
+  /** The one thing to do next, when more than one thing waits. */
+  const next = $derived(ordered.length > 1 ? ordered.find((i) => !i.blockedBy.length) : undefined);
+  /** The rest by goal, in the order their first item comes, Other work last. */
+  const groups = $derived.by(() => {
+    const by = new Map<string, typeof ordered>();
+    for (const i of ordered) {
+      if (i.key === next?.key) continue;
+      const g = goalOf[i.key] ?? '';
+      by.set(g, [...(by.get(g) ?? []), i]);
+    }
+    const other = by.get('');
+    by.delete('');
+    return [
+      ...[...by].map(([title, list]) => ({ title, list })),
+      ...(other ? [{ title: by.size ? 'Other work' : '', list: other }] : [])
+    ];
+  });
+
+  /** What Waiting holds under the Next card, the While you were away card counting once. */
+  const rest = $derived(
+    ordered.length - (next ? 1 : 0) + desk.projectWork.length + (desk.away.length ? 1 : 0)
+  );
+
   let openKey = $state<string | undefined>();
   /** An attached file with edits the owner has not saved. */
   let unsaved = $state(false);
@@ -100,6 +175,10 @@
   function show(key: string | undefined) {
     openKey = key;
     unsaved = false;
+    if (single) {
+      if (!key) ondone?.();
+      return;
+    }
     const i = items.find((x) => x.key === key);
     if (i?.row.staffId) showInChat(i.row.staffId, delivered(i));
   }
@@ -109,6 +188,9 @@
     if (unsaved) wins.confirm = { id: 'desk', go: () => ((wins.confirm = undefined), show(key)) };
     else show(key);
   }
+  $effect(() => {
+    if (home) untrack(() => go(undefined));
+  });
   // Only a new focus opens an item. `go` reads the desk, and a desk that
   // changes (a step ticked) must not reopen whatever was focused last.
   $effect(() => {
@@ -146,6 +228,8 @@
   /** The ask this one reworks, when the owner sent that one back. */
   let reworks = $state<AskRow | null>(null);
   let secret = $state<Record<number, string>>({});
+  /** Each sign-in step's page once Sign in made one, for when no browser opened. */
+  let signInPage = $state<Record<number, string>>({});
   let toolList = $state<Record<number, { name: string; description: string; readOnly: boolean }[]>>(
     {}
   );
@@ -177,6 +261,7 @@
     reworks = null;
     skip = {};
     secret = {};
+    signInPage = {};
     changing = false;
     folderWarning = '';
     const asked = i?.kind === 'ask' ? i.row : undefined;
@@ -276,11 +361,17 @@
   /** Dismiss the While you were away card: every job on it leaves it. */
   const dismissAway = () => act(() => call('/api/jobs/away', undefined, 'DELETE'));
 
-  /** The service's sign-in page opens in a new tab; the step ticks when the owner comes back. */
+  /**
+   * The service's sign-in page opens in a new tab; the step ticks when the
+   * owner comes back. A browser can block a window opened after an await, so
+   * the step also links to the same page.
+   */
   async function hostedSignIn(t: TaskRow, index: number) {
     await act(async () => {
       const r = await call<{ url?: string }>(`/api/tasks/${t.id}`, { op: 'oauth', index });
-      if (r.url) window.open(r.url, '_blank', 'noopener');
+      if (!r.url) return;
+      signInPage[index] = r.url;
+      window.open(r.url, '_blank', 'noopener');
     });
   }
 
@@ -294,13 +385,13 @@
     });
   }
 
-  const LABEL = { ask: 'Ask', task: 'Task', report: 'Report' } as const;
+  const LABEL = { ask: 'Needs your yes', task: 'Needs your hands', report: 'To read' } as const;
   const doneCount = (steps: Step[]) => steps.filter((s) => s.done).length;
 </script>
 
 <section class="flex h-full min-h-0 flex-col" aria-label="Your desk">
-  <!-- No heading: the window's tab already says Desk and how many wait. -->
-  {#if open}
+  <!-- No heading: the Odds tab already says how many wait. -->
+  {#if open && !single}
     <!-- Back to the list: its own row above the item, where the eye starts. -->
     <div class="border-b border-hairline px-3 py-2">
       <button
@@ -336,133 +427,149 @@
     </div>
   {/if}
 
-  <div class="flex-1 overflow-y-auto p-3">
-    {#if !open}
-      {#if desk.away.length}
-        <section class="mb-3 rounded-xl bg-raise px-3 py-2.5" aria-label="While you were away">
-          <div class="flex items-center gap-2">
-            <h3 class="flex-1 text-sm font-medium text-ink">While you were away</h3>
-            <button
-              class="rounded-lg px-2.5 py-1 text-xs text-muted hover:text-ink disabled:opacity-40"
-              disabled={busy}
-              onclick={dismissAway}>Dismiss</button
-            >
-          </div>
-          <p class="mt-0.5 text-xs text-muted">
-            {desk.away.length === 1
-              ? 'This job skipped a run that was too late to be useful. It runs again at its next time.'
-              : 'These jobs each skipped a run that was too late to be useful. Each runs again at its next time.'}
-          </p>
-          <ul class="mt-2 flex flex-col gap-1.5">
-            {#each desk.away as j (j.id)}
-              <li class="flex items-center gap-2">
-                <span class="min-w-0 flex-1">
-                  <span class="block truncate text-sm text-ink">{j.name}</span>
-                  <span class="block text-[11px] text-faint"
-                    >{who(j.staffId)?.name ?? j.staffId} · skipped {when(j.skippedAt)}</span
-                  >
-                </span>
-                <button
-                  class="shrink-0 rounded-lg bg-night/60 px-2.5 py-1 text-xs hover:bg-sea/25 disabled:opacity-40"
-                  disabled={busy}
-                  onclick={() => runAway(j.id)}>Run now</button
-                >
-              </li>
-            {/each}
-          </ul>
-          {#if problem}
-            <p class="mt-2 text-xs text-coral">{problem}</p>
+  <div class="flex-1 overflow-y-auto {single || open ? 'p-3' : 'pt-3'}">
+    {#if !open && single}
+      <p class="py-6 text-center text-sm text-muted">This is no longer waiting on you.</p>
+    {:else if !open}
+      {#snippet row(i: (typeof ordered)[number], isNext = false)}
+        {@const from = who(i.row.staffId)}
+        <button
+          class="flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-start transition-colors hover:bg-sea/15 {isNext
+            ? 'bg-sea/15 ring-1 ring-sea/50'
+            : 'bg-raise'} {i.blockedBy.length ? 'opacity-60' : ''}"
+          onclick={() => go(i.key)}
+        >
+          {#if from}
+            <Pixel
+              src={from.look?.portrait}
+              frame={`${from.portrait}/default`}
+              fallback={`${from.sprite}@${from.variant}/idle-down-0`}
+              scale={1}
+              label={from.name}
+              class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-sea-deep"
+            />
           {/if}
-        </section>
-      {/if}
-      {#if desk.projectWork.length}
-        <ul class="mb-1.5 flex flex-col gap-1.5" aria-label="Project work to review">
-          {#each desk.projectWork as p (p.id)}
-            {@const from = p.staffId ? who(p.staffId) : undefined}
-            <li>
-              <button
-                class="flex w-full items-start gap-3 rounded-xl bg-raise px-3 py-2.5 text-start transition-colors hover:bg-sea/15"
-                onclick={() => openProject(p.sessionId)}
+          <span class="min-w-0 flex-1">
+            <span class="flex items-center gap-2 text-[10px] tracking-[0.16em] uppercase">
+              {#if isNext}<span class="text-sea">Next</span>{/if}
+              <span class={i.kind === 'report' ? 'text-sea' : 'text-ember'}>{labelOf(i)}</span>
+              <span class="text-faint"
+                >{from?.name ?? 'Office'}{viaOf(i)
+                  ? `, from ${who(viaOf(i))?.name ?? viaOf(i)}'s work`
+                  : ''} · {ago(i.at)}</span
               >
-                {#if from}
-                  <Pixel
-                    src={from.look?.portrait}
-                    frame={`${from.portrait}/default`}
-                    fallback={`${from.sprite}@${from.variant}/idle-down-0`}
-                    scale={1}
-                    label={from.name}
-                    class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-sea-deep"
-                  />
-                {/if}
-                <span class="min-w-0 flex-1">
-                  <span class="flex items-center gap-2 text-[10px] tracking-[0.16em] uppercase">
-                    <span class="text-ember">Project work</span>
-                    <span class="text-faint">{from?.name ?? 'Office'} · {ago(p.at)}</span>
+            </span>
+            <span class="mt-0.5 block text-sm text-ink">{i.row.title}</span>
+            {#if i.blockedBy.length}
+              <span class="mt-0.5 block text-xs text-muted"
+                >Waits on {i.blockedBy[0].row.title}</span
+              >
+            {:else if i.unblocks.length}
+              <span class="mt-0.5 block text-xs text-sea"
+                >Unblocks {i.unblocks.length}: {i.unblocks.map((u) => u.row.title).join(', ')}</span
+              >
+            {/if}
+            {#if i.kind === 'task' && i.row.steps.length}
+              <span class="mt-0.5 block text-xs text-muted"
+                >{doneCount(i.row.steps)} of {i.row.steps.length} steps done</span
+              >
+            {/if}
+          </span>
+        </button>
+      {/snippet}
+      <!-- The Odds tab: what to do next, then the rest of the desk, then every Odd. -->
+      {#if next}
+        <div class="mb-3 px-3">{@render row(next, true)}</div>
+      {/if}
+      <Fold id="waiting" title="Waiting" count={rest} body="px-3 pb-3">
+        {#if desk.away.length}
+          <section class="mb-3 rounded-xl bg-raise px-3 py-2.5" aria-label="While you were away">
+            <div class="flex items-center gap-2">
+              <h3 class="flex-1 text-sm font-medium text-ink">While you were away</h3>
+              <button
+                class="rounded-lg px-2.5 py-1 text-xs text-muted hover:text-ink disabled:opacity-40"
+                disabled={busy}
+                onclick={dismissAway}>Dismiss</button
+              >
+            </div>
+            <p class="mt-0.5 text-xs text-muted">
+              {desk.away.length === 1
+                ? 'This job skipped a run that was too late to be useful. It runs again at its next time.'
+                : 'These jobs each skipped a run that was too late to be useful. Each runs again at its next time.'}
+            </p>
+            <ul class="mt-2 flex flex-col gap-1.5">
+              {#each desk.away as j (j.id)}
+                <li class="flex items-center gap-2">
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate text-sm text-ink">{j.name}</span>
+                    <span class="block text-[11px] text-faint"
+                      >{who(j.staffId)?.name ?? j.staffId} · skipped {when(j.skippedAt)}</span
+                    >
                   </span>
-                  <span class="mt-0.5 block text-sm text-ink">{p.title}</span>
-                  <span class="mt-0.5 block truncate text-xs text-muted">{p.prompt}</span>
-                </span>
-              </button>
-            </li>
-          {/each}
-        </ul>
-      {/if}
-      {#if !items.length && !desk.away.length && !desk.projectWork.length}
-        <p class="py-10 text-center text-sm text-muted">
-          Desk clear. Your Odds will bring you anything that needs you.
-        </p>
-      {/if}
-      <ul class="flex flex-col gap-1.5">
-        {#each items as i (i.key)}
-          {@const from = who(i.row.staffId)}
-          <li>
-            <button
-              class="flex w-full items-start gap-3 rounded-xl bg-raise px-3 py-2.5 text-start transition-colors hover:bg-sea/15"
-              onclick={() => go(i.key)}
-            >
-              {#if from}
-                <Pixel
-                  src={from.look?.portrait}
-                  frame={`${from.portrait}/default`}
-                  fallback={`${from.sprite}@${from.variant}/idle-down-0`}
-                  scale={1}
-                  label={from.name}
-                  class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-sea-deep"
-                />
-              {/if}
-              <span class="min-w-0 flex-1">
-                <span class="flex items-center gap-2 text-[10px] tracking-[0.16em] uppercase">
-                  <span class={i.kind === 'report' ? 'text-sea' : 'text-ember'}>{labelOf(i)}</span>
-                  <span class="text-faint"
-                    >{from?.name ?? 'Office'}{viaOf(i)
-                      ? `, from ${who(viaOf(i))?.name ?? viaOf(i)}'s work`
-                      : ''} · {ago(i.at)}</span
+                  <button
+                    class="shrink-0 rounded-lg bg-night/60 px-2.5 py-1 text-xs hover:bg-sea/25 disabled:opacity-40"
+                    disabled={busy}
+                    onclick={() => runAway(j.id)}>Run now</button
                   >
-                </span>
-                <span class="mt-0.5 block text-sm text-ink">{i.row.title}</span>
-                {#if i.kind === 'task' && i.row.steps.length}
-                  <span class="mt-0.5 block text-xs text-muted"
-                    >{doneCount(i.row.steps)} of {i.row.steps.length} steps done</span
-                  >
-                {/if}
-              </span>
-            </button>
-          </li>
-        {/each}
-      </ul>
-      {#if desk.recent.length}
-        <details class="mt-4 border-t border-hairline pt-2 text-xs text-muted">
-          <summary class="cursor-pointer">Recent decisions and answers</summary>
-          <ul class="mt-2 flex flex-col gap-2">
-            {#each desk.recent as row (row.id)}
+                </li>
+              {/each}
+            </ul>
+            {#if problem}
+              <p class="mt-2 text-xs text-coral">{problem}</p>
+            {/if}
+          </section>
+        {/if}
+        {#if desk.projectWork.length}
+          <ul class="mb-1.5 flex flex-col gap-1.5" aria-label="Project work to review">
+            {#each desk.projectWork as p (p.id)}
+              {@const from = p.staffId ? who(p.staffId) : undefined}
               <li>
-                <span class="block text-ink">{row.title}</span>
-                {#if row.reason}<span class="whitespace-pre-wrap">{row.reason}</span>{/if}
+                <button
+                  class="flex w-full items-start gap-3 rounded-xl bg-raise px-3 py-2.5 text-start transition-colors hover:bg-sea/15"
+                  onclick={() => openProject(p.sessionId)}
+                >
+                  {#if from}
+                    <Pixel
+                      src={from.look?.portrait}
+                      frame={`${from.portrait}/default`}
+                      fallback={`${from.sprite}@${from.variant}/idle-down-0`}
+                      scale={1}
+                      label={from.name}
+                      class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-sea-deep"
+                    />
+                  {/if}
+                  <span class="min-w-0 flex-1">
+                    <span class="flex items-center gap-2 text-[10px] tracking-[0.16em] uppercase">
+                      <span class="text-ember">Project work</span>
+                      <span class="text-faint">{from?.name ?? 'Office'} · {ago(p.at)}</span>
+                    </span>
+                    <span class="mt-0.5 block text-sm text-ink">{p.title}</span>
+                    <span class="mt-0.5 block truncate text-xs text-muted">{p.prompt}</span>
+                  </span>
+                </button>
               </li>
             {/each}
           </ul>
-        </details>
-      {/if}
+        {/if}
+        {#if !items.length && !desk.away.length && !desk.projectWork.length}
+          <p class="py-4 text-center text-sm text-muted">
+            Desk clear. Your Odds will bring you anything that needs you.
+          </p>
+        {/if}
+        {#each groups as g (g.title)}
+          {#if g.title}
+            <h3 class="mt-3 mb-1.5 text-[10px] tracking-[0.16em] text-muted uppercase">
+              {g.title}
+            </h3>
+          {/if}
+          <ul class="flex flex-col gap-1.5">
+            {#each g.list as i (i.key)}
+              <li>{@render row(i)}</li>
+            {/each}
+          </ul>
+        {/each}
+      </Fold>
+      {@render after?.()}
     {:else if open.kind === 'ask' && open.row.kind === 'reply' && open.row.reply}
       {@const a = open.row}
       {#key a.id}
@@ -840,6 +947,14 @@
                     disabled={busy}
                     onclick={() => hostedSignIn(t, index)}>Sign in</button
                   >
+                  {#if signInPage[index]}
+                    <a
+                      class="ms-2 text-xs text-sea underline underline-offset-2"
+                      href={signInPage[index]}
+                      target="_blank"
+                      rel="noopener noreferrer">No page opened? Open the sign-in page</a
+                    >
+                  {/if}
                   <details class="mt-2 text-xs text-muted">
                     <summary class="cursor-pointer">The service won't let me sign in</summary>
                     <p class="mt-2">
@@ -911,8 +1026,8 @@
                           rel="noreferrer">give the Odd a folder it can read</a
                         >.
                       {:else}
-                        The service returned no tools. Check the account and its access, then
-                        reconnect.
+                        The service listed no tools, so nothing is connected yet. Check the key or
+                        the account, then click Connect again.
                       {/if}
                     </p>
                     <ul class="mt-1.5 flex max-h-48 flex-col gap-1 overflow-y-auto">
@@ -928,12 +1043,25 @@
                         </li>
                       {/each}
                     </ul>
-                    <button
-                      class="mt-2 rounded-lg bg-sea px-3 py-1.5 text-xs font-medium text-night disabled:opacity-40"
-                      disabled={busy}
-                      onclick={() => step(t, index, { op: 'confirm-tools' })}>Confirm</button
-                    >
+                    <!-- No tools is no connection: Confirm would leave a service with 0 tools (#305). -->
+                    {#if list.length}
+                      <button
+                        class="mt-2 rounded-lg bg-sea px-3 py-1.5 text-xs font-medium text-night disabled:opacity-40"
+                        disabled={busy}
+                        onclick={() => step(t, index, { op: 'confirm-tools' })}
+                        >{busy ? 'Confirming' : 'Confirm'}</button
+                      >
+                    {:else}
+                      <button
+                        class="mt-2 rounded-lg bg-sea px-3 py-1.5 text-xs font-medium text-night disabled:opacity-40"
+                        disabled={busy}
+                        onclick={() => loadTools(t, index)}
+                        >{busy ? 'Connecting' : 'Connect again'}</button
+                      >
+                    {/if}
                   {/if}
+                {:else if s.action?.kind === 'tools' && s.answer}
+                  <p class="mt-1.5 text-xs text-muted">{s.answer}</p>
                 {:else if s.action?.kind === 'choice'}
                   {#if s.answer}
                     <div class="mt-1.5 text-xs text-sea">You chose: {s.answer}</div>

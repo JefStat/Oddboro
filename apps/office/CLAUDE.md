@@ -56,7 +56,8 @@ pieces under 3,900 bytes a line, so no value is on a command line.
 2. `/atlas/atlas.png` and `/atlas/atlas.json` serve the compiled atlas from
    `packages/sprites/dist/`.
 3. The page builds a `Floor` (`src/lib/floor/engine.ts`): sprites by draw
-   pass, sky behind windows, and sun shafts and dust by day. At night every
+   pass, sky behind windows, and sun shafts and dust by day, unless the
+   office's weather is overcast (see "Weather"). At night every
    sprite wears a tint by the hour, emissive pixels ride on top of their own
    sprite at full brightness, and each lamp adds a glow cut to its room.
    Doors open only for an Odd stepping through them. The hour is always
@@ -97,46 +98,59 @@ pieces under 3,900 bytes a line, so no value is on a command line.
    note (`pop` on `StaffActor`, art in `fx-pop`). One that arrives while
    another plays is dropped. While it plays, the Odd's name tag rises over it
    (`tagLift`, read in `onRender`) and settles after. Nothing polls.
-6. Two full-height panels flank the floor (`src/lib/ui/SidePanel.svelte`).
-   Each resizes by dragging its inner edge (or the arrow keys on it), and
-   remembers its width per viewer. Where the two overlap, the end one paints
-   over the start one, but the start one's front window can sit on top: the
-   one the owner opened last sits on top, picking an Odd
-   puts that Odd on top, and closing the Odd or clicking the window's tab
-   brings the window back on top (`raised` in `windows.svelte.ts`, passed to
-   `SidePanel.svelte` as `onTop` in `+page.svelte`).
-   The start side is the office plate (name,
-   the clock, Setup, and the Desk, Goals, Lessons, Ledger, Services, Hire and Office
-   buttons), which opens into a bar of windows
-   (`src/lib/ui/windows.svelte.ts`): the Desk, the Goals, the Lessons, the
-   Ledger, each hire and each open file is a tab. D opens the Desk. Every
-   open window stays mounted, so a drawing keeps going while the owner works
-   another. ✕ folds the bar away with its windows still open; closing a
-   window with unsaved edits or a drawing in progress asks first.
-   The end edge holds the Odds rail (`src/lib/ui/OddsRail.svelte`) once the
-   office has an Odd: a ⌘K button on top (Ctrl K off a Mac, set once the
-   page knows), then every Odd's portrait, with its
-   count of work in progress and an ember ring when it waits on the owner.
-   Hovering the rail, moving into it with the keyboard, the ⌘K button or
-   Cmd+K (Ctrl+K) from anywhere widens the rail itself toward the floor
-   (200 ms, none under reduced motion): each portrait gains its name and
-   role, and the top slot a search over name, role and remit (Cmd+K puts the
-   cursor there), with the arrow keys to pick one and Enter to open a chat
-   (`chatAbout(id, '')`). The portraits stay at the edge. Picking an Odd
-   opens its panel, sliding in from the screen's edge, and the rail slides
-   off the screen while the panel is open; Cmd+K brings it back over the
-   panel until an Odd is picked or the pointer leaves. Closing or folding
-   the panel (») brings the rail back. An effect that reads what it writes
-   loops until Svelte stops the page (`effect_update_depth_exceeded`): the
-   rail's ⌘K effect writes untracked. The
-   camera centres on the floor left between the panels and the rail, and
-   the Desk pill moves to stay clear. The floor opens on the whole building
-   and stays where the owner drags it. While an Odd's panel is open, the
-   camera follows that Odd; a drag lets go until the owner selects someone
-   or reopens the panel.
-7. **The Desk** (`src/lib/ui/DeskDrawer.svelte`) is everything waiting on the owner:
-   open asks, open tasks, unread reports. The pill at the top shows the count,
-   the tab title carries it, a waiting Odd's tag turns ember, and a
+6. One full-height pane sits beside the floor (`src/lib/ui/SidePanel.svelte`),
+   on the start or end side as the viewer docks it (⇄ on the plate,
+   `paneSide`, kept in localStorage as `oddboro.pane.side`). It resizes by
+   dragging its inner edge (or the arrow keys on it), and remembers its width
+   per viewer. Under the plate sits a strip of three tabs across the pane's
+   width, drawn like the Odd card's groups: **Odds**, **Office** and
+   **Setup** (`wins.tab`, `showTab` in `src/lib/ui/windows.svelte.ts`). The
+   Odds label carries the count waiting on the owner in an ember circle and
+   the unread messages and pokes from Odds in a sea one
+   (`src/lib/ui/CountBadge.svelte`), each only above zero; each Odd's row
+   carries its own the same way. The plate names the office and its clock,
+   with no line under them. The Odds tab is one scrolling column
+   (`DeskDrawer.svelte` with Your Odds as its `after`): the Next card, then
+   Waiting (N), the rest of the desk, then Your Odds
+   (`src/lib/ui/OddsList.svelte`), every Odd with its own waiting and unread
+   counts, a find box that filters in place, names with portraits or
+   portraits alone (`oddboro.odds.view`), and + Hire. The Office tab holds
+   Goals, Layout, Usage, Lessons, Ledger and Services. In Advanced mode a
+   Projects tab sits between Office and Setup. Setup holds `src/lib/ui/Welcome.svelte`. Every section on the Odds and Office tabs folds open in place under a header with a
+   chevron (`src/lib/ui/Fold.svelte`), loads the first time it opens, stays
+   mounted once folded, and is remembered per viewer (`folds`,
+   `oddboro.pane.folds`). At first Waiting, Your Odds and Goals are open.
+   `openSection`, `openLessons` and `openProject` open a section on its tab
+   and scroll to it. Hires, files and reports open as windows in a tab
+   strip under the tabs, each kept mounted, so a drawing keeps going
+   while the owner works another; closing one goes back to the window or tab
+   it came from. ⌘K (Ctrl K off a Mac) opens the Odd finder from anywhere
+   (`src/lib/ui/OddFinder.svelte`, rules in `odd-finder.ts`): Up and Down
+   move, Enter opens that Odd with the cursor in its chat, Esc closes and
+   puts the cursor back. D, or
+   the desk pill, opens the Odds tab on its list with Waiting open. With one item
+   or file of an Odd open, a line names the Odd, then the item; the Odd's
+   name goes back up. Esc goes up one level: the item to its Odd, the Odd
+   to the Odds list, a tab to the whole office with the pane folded. In the
+   chat box Esc goes up at once, since each Odd's unsent words, reply and
+   files wait in memory until the owner comes back (`chat-unsent.ts`, gone
+   on a reload); any other box with words in it only lets go of the
+   cursor. A menu or popover that Esc closes claims the key, so the pane
+   stays put. Above that the Odds
+   tab and the Odd's own card say where the owner is, so no line repeats it. The tabs stay at every level, and Odds goes back to
+   the list. ✕ folds the pane away with its windows still open; closing a
+   window with unsaved edits or a drawing in progress asks first. Picking an
+   Odd, on Your Odds, in the finder or on the floor, opens its level in the
+   same pane (`oddInFront`), and an item it delivered opens one level down
+   (`paneItem`), on `DeskDrawer` with
+   `single`. The camera centres on the floor beside the pane, and follows the
+   picked Odd until the owner drags. The floor opens on the whole building.
+7. **The Desk** (`src/lib/ui/DeskDrawer.svelte`, the Odds tab) is everything waiting on the owner:
+   open asks, open tasks, unread reports. With more than one, a Next card on
+   top names the first that can be done now and what it unblocks, and the rest
+   group by goal, ordered by `orderItems` (`desk-order.ts` in the ledger); an
+   item that waits on another open one (`needs`) is dimmed and says so. The pill at the top shows the count,
+   the Odds tab carries it, a waiting Odd's tag turns ember, and a
    notification for each new item is one switch away, under You in the Setup
    window (`Welcome.svelte`, per viewer). An open item has All items above it,
    on a row of its own, to go back to the list. A task's Choose one step and a
@@ -156,7 +170,10 @@ pieces under 3,900 bytes a line, so no value is on a command line.
    pick up from (an intake becomes the hire it was for). One given in a chat
    brings the owner's message there too (`taskDoneBrief` in `src/lib/server/follow-up-brief.ts`). A report has Reply and
    Read: feedback is a reply in its writer's chat, not a form on the desk. Opening
-   any item selects it in its sender's chat on the end side. Selecting text in a report offers Chat (`src/lib/ui/SelectToChat.svelte`):
+   any item opens it there; from an Odd's chat or Items tab, it opens one
+   level down in the pane. Finishing one of the manager's items adds one line
+   to the manager's chat on what is next (`narrateNext` in
+   `src/lib/server/narrate.ts`), with no run. Selecting text in a report offers Chat (`src/lib/ui/SelectToChat.svelte`):
    the owner picks any Odd, and its chat opens with the passage quoted as a
    draft (`chat-about.svelte.ts` carries it to `ChatPanel`). Each of those is a follow-up (`src/lib/server/follow-ups.ts`,
    started from `hooks.server.ts`, woken by changes to `follow_ups` and by any run ending). Its reply
@@ -327,12 +344,15 @@ pieces under 3,900 bytes a line, so no value is on a command line.
    filter (About you when none is given; `{ staff }` for one Odd, `'all'` for
    the floor's library shelf), and switches an open one to it. It reloads
    when lessons change (`version`).
-9. The Odd's panel has three groups, each an icon and a word (the icon
+9. The Odd's panel has four groups, each an icon and a word (the icon
    alone when the bar is under 18rem): **Chat** (the chat alone, with no
-   row of tabs), **Knowledge** (a book icon: Skills, Lessons and Storage;
-   a persona Odd has no Skills) and **Settings** (its own four tabs,
-   below). A group opens on the tab it was last on; the Lessons tab counts
-   its guesses, and the Knowledge group itself shows no count. It opens on Chat. Storage
+   row of tabs), **Items** (`ItemsTab.svelte`: everything the Odd put in
+   front of the owner, Open, Done, All or Deleted, with Clear, Delete and
+   Restore on the ones ticked; the group counts what waits), **Brain** (a
+   brain icon: Skills, Lessons and Storage; a persona Odd has no Skills) and
+   **Settings** (its own four tabs, below). A group opens on the tab it was
+   last on; the Lessons tab counts its guesses, and the Brain group itself
+   shows no count. It opens on Chat. Storage
    (`StorageTab.svelte`, what a row lists and says in `storage-list.ts`) is a tree of everything the Odd kept in its own
    folder, then, under Shared work, its part of each thread it is on (by the
    test `workFile` uses, `workTitles` in the ledger), one folder per piece of
@@ -364,7 +384,13 @@ pieces under 3,900 bytes a line, so no value is on a command line.
    while the panel is open, so a
    reply survives switching tabs or collapsing. A send first keeps the owner's
    line in `chat.jsonl` with its source and turn ID (`keepOwnerTurn` in
-   `chat-turns.ts`). Imports and uploads share the existing `attachments`
+   `chat-turns.ts`), and every line also goes to the searchable
+   `chat_history` (`keepChatLine` in the ledger's `chat-history.ts`), which
+   `search_chats` reads. A chat whose session read more than
+   `ROLLOVER_TOKENS` in one model call rolls over before the next message:
+   the Odd writes a handover note in the old session (`handover.md`), and
+   the reply starts a fresh session that hears the note after the replay
+   (`chat-rollover.ts`). Imports and uploads share the existing `attachments`
    folder and `ChatFile` records. Each inline import is checked before any
    part is saved. The runner opens text and PDF files through its file tools;
    Claude Code, Codex and Grok also receive picture bytes. Get a reply on an
@@ -375,7 +401,7 @@ pieces under 3,900 bytes a line, so no value is on a command line.
    hand-off it gave or got (`handOffsFor`). A hand-off it gave sits on the card
    of its thread (`threadsFor`), where the thread began, even once it is
    continued: its title, when it began, where it stands in the same words as
-   the Goals window (`workLine`) and anything waiting on the owner, with each
+   the Goals section (`workLine`) and anything waiting on the owner, with each
    step on Open. A click anywhere on a desk item's card opens it: the card is
    one button, its title still selectable, and a click that ends a selection
    opens nothing; its controls sit below it, outside the button. It opens
@@ -691,7 +717,7 @@ pieces under 3,900 bytes a line, so no value is on a command line.
    (`ServiceActions.svelte`, `/api/services/[id]`), which puts its AWS step
    on the desk again from the office (`changeAwsTask`) and opens it. Under a
    grant the Odd's level does not allow, a line says so, with one click that
-   raises the level. The plate's Services window (`ServicesPanel.svelte`,
+   raises the level. The Office tab's Services section (`ServicesPanel.svelte`,
    `services()` in the ledger) lists every service an Odd holds or that is
    connected, with each Odd and its grant; a click on an Odd opens its card.
    The line saying what an Odd is doing names an outside tool's service by
@@ -803,7 +829,9 @@ pieces under 3,900 bytes a line, so no value is on a command line.
    office writes its `config.toml` only into a home with none, before the
    sign-in check, so the sign-in from the office's page (item 18), where a run
    without one points, is kept as a file. Every run
-   passes the office's switches as `-c` (`SWITCHES`) under `--strict-config`.
+   passes the office's switches as `-c` (`SWITCHES`) under `--strict-config`,
+   and its instructions, servers, folders and shell variables in its own
+   settings file (`RUN_FILE`, `-p`), so the command line fits Windows' limit.
    With Run commands on (a Mac or Linux), a Codex Odd has a shell, held by
    one kernel permission profile per run
    (`filesystem` in `codex.ts`): everything shut but the system's own folders
@@ -1044,7 +1072,7 @@ pieces under 3,900 bytes a line, so no value is on a command line.
    and `core.excludesFile` and `core.attributesFile` set to nothing) and
    a Codex Odd's `git init` copies no sample hooks (`GIT_TEMPLATE_DIR`, an
    empty folder in the run's temp folder). Codex takes `shellEnv` through one
-   `-c shell_environment_policy.set`, since its shell inherits only the core
+   `shell_environment_policy.set` in the run's settings file, since its shell inherits only the core
    variables and a second `set` would replace the first. Nor does it write the file a run
    reading the owner's edit is reading. It gets no skills, no
    plugins, none of the owner's own CLAUDE.md files, no Claude Code
@@ -1191,7 +1219,11 @@ pieces under 3,900 bytes a line, so no value is on a command line.
 10. Every run records its tokens per model and the owner's plan windows (5 hours
     and weekly), read from Claude Code's own stream. A run often reports only
     one window, so each is kept as it last came (`notePlan`). The card's back shows
-    them (`src/lib/ui/UsageStats.svelte`, LayerChart bars). An Odd's text renders
+    them (`src/lib/ui/UsageStats.svelte`, LayerChart bars), then the Odd's last
+    20 runs, each named by what it was for. The chat says how many tokens its
+    session holds, from `session.json` (`sessionTokens` in
+    `src/lib/server/chat-rollover.ts`), and the Office tab's Usage section ranks every Odd by
+    tokens over 24 hours or 7 days (`src/lib/ui/OfficeUsage.svelte`). An Odd's text renders
     as Markdown through `src/lib/ui/Markdown.svelte` (markdown-it, raw HTML
     off). Only a written-out address links out: one with its scheme
     (`https://`, `http://`, `mailto:`, `ftp://`), one that starts `//`, an
@@ -1234,13 +1266,17 @@ pieces under 3,900 bytes a line, so no value is on a command line.
     in the document editor (`src/lib/ui/JobDescription.svelte`); a save
     refuses if the description changed since the owner opened it. On an Odd
     that is not the Office Manager or a persona, the owner can open a Claude
-    agent file here to compare and edit its proposed instructions. The section
+    Code or Grok Build agent file here to compare and edit its proposed instructions. The section
     lists the file's servers as the hire window does (`AgentFileServers.svelte`),
     less any tool the Odd already holds or has asked for (`sortFor`). Save
     updates the same Odd through the description route, then raises those
     access asks at read, as a hire does; a refused save raises none. The file's
-    tools and permission mode are never taken. A local Odd's Skills tab, under
-    Knowledge, lists the SKILL.md files the owner attached, each by name with
+    tools and permission mode are never taken. A hire from an agent file keeps the
+    file's `name` (`claude_agent_name`). Importing that name again opens on the
+    Odds hired from it (or, hired before the office kept it, an Odd of the
+    same name) and a separate new hire; choosing one reviews its job
+    description here against the file. A local Odd's Skills tab, under
+    Brain, lists the SKILL.md files the owner attached, each by name with
     when to use it and Remove (`src/lib/ui/StaffSkills.svelte`, the ledger's
     `staff_skills`). Add a skill reads the name and when to use it from the
     file's front matter (`src/lib/staff/skill.ts`); the owner writes what is
@@ -1277,7 +1313,11 @@ pieces under 3,900 bytes a line, so no value is on a command line.
 
 12. **Hire** on the office plate opens the hire drawer
     (`src/lib/ui/HireDrawer.svelte`). An owner can start it from a Claude Code
-    agent Markdown file with Import. Its name, description, instructions and
+    or Grok Build agent Markdown file with Import. Grok Build uses the same
+    format with a few more settings, so one reader (`claude-agent.ts`) takes
+    both, and a Grok model in the file starts the hire on Grok. A Grok file
+    whose full prompt mode fills in `${{ }}` as it runs is refused until the
+    owner writes plain instructions. Its name, description, instructions and
     supported model fill the same form, and the form names in plain words the
     settings left in the file. A header that does not parse says so in one
     sentence. Each MCP server the file lists by an https address, or by a name
@@ -1286,7 +1326,10 @@ pieces under 3,900 bytes a line, so no value is on a command line.
     connects without the owner's yes. The form's lines about the file are
     `src/lib/ui/AgentFileServers.svelte`. A server that runs a command is listed in
     the form and never run or asked for. Picking another choice clears the
-    import. Step one makes the person's look
+    import. Choosing several files opens the same form for each in turn
+    (`src/lib/ui/HireRoster.svelte`): a file an Odd came from offers that Odd
+    first, as one file does, each hire or update saves as it happens, Skip
+    leaves a file out, and the last file ends on a count. Step one makes the person's look
     (`src/lib/ui/LookStudio.svelte`), drawn or built. Drawn: the owner
     describes them, LookStudio asks `/api/looks`, and
     the owner sees the portrait and the walk, then redraws with a note or keeps it.
@@ -1478,7 +1521,7 @@ pieces under 3,900 bytes a line, so no value is on a command line.
     `install` turns true once `installAt` has come and no chat, job,
     follow-up, draft or office drawing runs, or 20 minutes after it whatever
     runs. That answer records `downAt`; the next start records `upAt` and
-    forgets the ready update (`loadUpdate`). The Setup window's Updates section
+    forgets the ready update (`loadUpdate`). The Setup tab's Updates section
     (`src/lib/ui/UpdatesSection.svelte`) shows the version (`ODDBORO_VERSION`,
     or "development"), Check now (the server writes `oddboro:update-check` on
     its stdout), the window, and a ready update with Install now and Install
@@ -1519,7 +1562,7 @@ pieces under 3,900 bytes a line, so no value is on a command line.
     with a listing of Google's models before the keychain keeps it. The page's
     side is `src/lib/ui/agent-tools.svelte.ts`, used by the Your AI tiles
     (`src/lib/ui/OfficeTools.svelte`) and by "Runs on". The tiles show on
-    setup's Your AI card (`AiCard.svelte`) and as the Setup window's Your AI
+    setup's Your AI card (`AiCard.svelte`) and as the Setup tab's Your AI
     section: one per tool on every system, a tool this system does not offer
     greyed with why (`notOfferedWhy`), and the picked tool's panel below
     them. Picking a tile sets the office's tool (`OFFICE_AGENT`, PUT
@@ -1534,7 +1577,7 @@ pieces under 3,900 bytes a line, so no value is on a command line.
 
 ## Designing the office
 
-The Office window (`src/lib/ui/OfficeDesigner.svelte`) takes the owner's words
+The Office tab's Layout section (`src/lib/ui/OfficeDesigner.svelte`) takes the owner's words
 and `POST /api/office/design` asks Claude, as the office, for an `OfficeSpec`
 (a room the owner places carries `side`, west or east, and `row`, back or
 front; a change to an office is told where its rooms stand now)
@@ -1580,13 +1623,26 @@ and the front and street only if the theme did; its edits elsewhere are
 ignored, and with nothing touched it does not run. Nothing changes until **Move in**:
 `POST /api/office/move-in` (`moveInto` in `src/lib/server/move-in.ts`) checks
 the art and builds the spec again on the server, keeps the layout and its art (`saveArt`), and `moveIn` makes it the
-office. Kept art joins the library for every later drawing: `officeLibrary()`
+office. A move in saves over the layout the owner is in (`saveOffice(o, id)`), so
+its room names and seats, kept under `layoutKey(id)`, stay with it, and a Claude
+that sends the office again with new art changes it rather than adding a twin.
+Only `new: true` (on the move in, or on the `POST /api/office/design` that a
+`PUT { moveIn: true }` follows) adds another layout; the window sends it when
+the owner draws a whole new office (**Draw it**), and `layout: <id>` names the layout to save over. A move in from
+the sample always adds a layout, since the sample is never written over. The version it replaces
+goes in the layout's `previous`, and **Undo last change** beside "You are here"
+(`POST /api/office/layouts/[id]/undo`, `undoOffice`) swaps the two and moves in
+again, so a second press redoes the change. Kept art joins the library for every later drawing: `officeLibrary()`
 in `space.ts` merges it into the catalog and the page loads its sheet beside
 the atlas. It first remembers where
 each Odd works in the office being left, puts anyone it remembers back in
 the one being entered, and moves the rest to the work room with the most free
-seats. The `offices` trigger reloads every open page. Earlier layouts and the
-sample stay in the window to move back to.
+seats. The `offices` trigger reloads every open page. Other layouts and the
+sample stay in the Layout section to move back to. Remove takes a second click and
+deletes a layout the owner is not in (`DELETE /api/office/layouts/[id]`,
+`removeOffice`) with its room names and seats; its art stays in the library.
+The route tells every open page (a `layouts` event, not the trigger, which
+would reload them), and each open Layout section reads its list again.
 
 ## A new owner's first visit
 
@@ -1848,6 +1904,85 @@ account.
    `src/lib/server/diagnostics.ts` and `src/lib/server/hosts.ts` import
    nothing that brings in Postgres.
 
+## Weather
+
+The weather where the owner is, as a pill beside the desk count. Off until
+the owner turns it on in Setup. The decision is in `docs/decisions/`
+(grep `weather`).
+
+1. Setup's Weather section (`WeatherSection.svelte`) takes a country (the
+   ones GeoNames covers, `POSTAL_COUNTRIES` in `src/lib/weather.ts`, starting
+   at the browser's region), a postal code and °C or °F (°F for the US,
+   Liberia and Myanmar until the owner picks). Show weather is
+   `PUT /api/weather`.
+2. The lookup (`src/lib/server/postal-codes.ts`) downloads
+   `download.geonames.org/export/zip/<CC>.zip`, reads `<CC>.txt` out of it
+   with Node's zlib (`zip.ts`), and finds the code: whole, then the part the
+   file lists (GB, GG, JE and IM drop the last three characters, CA keeps three,
+   NL four), then the longest listed start (a coarse area, a ZIP+4). In IE,
+   MT, CL, CN, AR and BR, whose files hold coarse areas, it takes the listed
+   code sharing the most of its start. Anything else not found answers
+   `missing` with the closest code, which Setup offers as Use. Nothing of the
+   file is kept.
+3. The setting is `OFFICE_WEATHER` in `.env`, as JSON: country, the code as
+   typed, the place ("Seattle, WA 98101", which Setup shows as Matched),
+   latitude and longitude to one decimal, and the unit. Every window and the
+   app share it. The same country and code again change only the unit, with
+   no lookup. Turn off (`DELETE`) clears it. Each change sends
+   `{ type: 'weather' }` on the live line, and every page asks again.
+4. The forecast (`src/lib/server/weather.ts`) is MET Norway's
+   `locationforecast/2.0/compact`, asked by the server alone, with
+   `Oddboro/<version> https://oddboro.com` as the User-Agent and gzip. One
+   cache serves every window: it asks only when a page asks after the last
+   answer's Expires (read against MET Norway's Date), sends
+   `If-Modified-Since` with the last `Last-Modified`, and shares one request
+   among pages asking at once. A failure keeps the last series and its
+   reason: 10 minutes, doubling to 6 hours, or an hour, doubling, after a 429
+   or 403. Each answer serves the hour that has started from the kept series
+   (`currentHour`): temperature, cloud and the raw `symbol_code`.
+5. `GET /api/weather` answers the setting, that hour, the reason a check
+   failed, and `next`: the series' next hour or the expiry, whichever is
+   first. The page (`weather.svelte.ts`) asks as it opens, then on the page's
+   15 s clock only once `next` has passed, and only while
+   `document.visibilityState` is visible (`askNow`); `visibilitychange`
+   catches up. Off, `next` is null and the page asks nothing until the live
+   line says the setting changed.
+6. The pill (`WeatherPill.svelte`) sits in the desk pill's row with the same
+   classes: an icon for the sky (`WeatherIcon.svelte`, one per family in
+   `SKIES`: `skyOf` maps every MET Norway symbol to one) and the temperature.
+   A click opens the place, the sky in words (`conditionWords`), the time of
+   the last answer, why the last check failed, Change in Setup, and the
+   credit to MET Norway and GeoNames. A failed check greys the pill and adds a
+   coral dot; the last report stays.
+7. The floor draws each sky (`Floor.setWeather(symbol)`), only while the
+   light is Auto; holding day or night shows the clock's sky. `lookOf` in
+   `src/lib/floor/sky.ts` reads the symbol: what falls (rain, sleet, snow),
+   how hard (light, steady, heavy), thunder, drifting clouds, fog. The
+   drawing is `src/lib/floor/weather-layer.ts`, over whatever floor is
+   loaded: outdoors is any cell in no indoor room or hall and no wall,
+   and the panes are the sprites tagged `window`.
+   - The window sky (`skyBand`) is the clock's, softened for partly cloudy,
+     grey at the hour's brightness under cloud, darker in rain or snow and
+     darkest in a storm. Overcast also stops the sun shafts and dims the
+     scene a little by day (`dimOf`).
+   - Partly cloudy: a small cloud crosses each pane, a pixel every two
+     seconds, all in step. Fog: a haze over the grounds that thins toward
+     the building, drawn once.
+   - Rain, sleet and snow fall over the grounds from one pool of `POOL`
+     sprites made once; `placeFall` wraps each mark into the view, so all
+     are on screen, and the field stays fixed to the world. Heavier symbols
+     fall thicker and faster. Rain slants, darker over pale stone, flecks
+     on hard ground, and at night catches the street lamps. Snow sways and
+     settles on the grounds over 15 minutes, fading over 30 after.
+   - Thunder: a soft flash over the grounds and the panes every 8 to 25
+     seconds (`flashStep`), fading over four ticks, and one flash in three
+     draws a pixel bolt over the grounds.
+   - Everything steps on the ambient clock (12 a second). A sky with nothing
+     moving (clear, cloudy, fog) asks for no draw, and partly cloudy only
+     when its clouds move. A hidden page stops it with the rest of the
+     floor. Under reduced motion nothing moves: the marks hold still, and
+     there is no flash or bolt.
+
 ## A New Altitude account
 
 An owner who already has a New Altitude account can sign in to it in Setup
@@ -2049,6 +2184,9 @@ the persona's voice.
 | `src/lib/server/design-job.ts`        | The drawing as a job on the server, which pages follow                                                                                                                       |
 | `src/lib/ui/onboarding/`              | A new owner's first visit: the cards, the reveal's story, the music                                                                                                          |
 | `src/lib/floor/reveal.ts`             | The office going up beat by beat, and the bus                                                                                                                                |
+| `src/lib/weather.ts`                  | The weather's setting, report, skies, words and units, shared by the server and the page                                                                                     |
+| `src/lib/server/weather.ts`           | The weather setting in `.env`, and the one MET Norway cache that honours Expires                                                                                             |
+| `src/lib/server/postal-codes.ts`      | A postal code looked up in its country's GeoNames file, on this computer                                                                                                     |
 | `src/lib/diagnostics.ts`              | What a report may carry, and when a trace is taken: the server's, the relay's and the page's one rule                                                                        |
 | `src/lib/server/diagnostics.ts`       | The SDK's options and the gate every report passes, with the owner's answer                                                                                                  |
 | `src/lib/server/account.ts`           | The New Altitude sign-in: start, callback, refresh, sign out                                                                                                                 |
@@ -2129,8 +2267,8 @@ the persona's voice.
   never the screen's. There is no time slider and there are no office hours:
   Odds work around the clock.
 - A new owner lands on the first visit (`src/lib/ui/onboarding/`) until they
-  press Open the office. The plate's Setup link opens the Setup window
-  (`src/lib/ui/Welcome.svelte`) after that.
+  press Open the office. The Setup tab (`src/lib/ui/Welcome.svelte`) holds
+  it after that.
 - Never show demo numbers as real ones. The card's back shows only measured
   usage.
 - A tool connects at read or write: read gets the tools its server marks as
@@ -2165,26 +2303,25 @@ Retry reply on the saved turn, so the earlier failed reply stays in
 history. Access cards come from database deliveries, never the Odd's chat
 file.
 
-The Projects window and its local controller live in
+The Projects tab and its local controller live in
 `src/lib/ui/ProjectSessions.svelte` and `src/lib/server/project-sessions/`.
-Projects is a window in the start panel (`openProject` in
-`windows.svelte.ts`). While it is in front on a wide screen, the panel
-stretches to 8 px short of the Odd's panel, else of the Odds rail
+Projects is its own tab, shown only in Advanced mode, and fills the pane's
+height (`openProject` in `windows.svelte.ts`). Esc inside it belongs to the
+terminal, so the pane does not go up from there (`data-own-esc`). While the
+Projects tab is in front on a wide screen, the pane
+stretches to 16 px short of the screen's far edge
 (`projectsReach` in `+page.svelte`, `reach` on `SidePanel.svelte`), the desk
 pill hides, and the music keeps its usual width. Its handle still drags: the
 width it leaves is Projects' own (`reachWidth`, kept beside the panel's usual
 width), from `min` up to that reach, and dragged all the way it follows the
-reach again. Another tab in front brings the usual width back. While the rail is wide
-(hovered, focused or ⌘K: `onwiden` on `OddsRail.svelte`), the panel steps
-back to the wide rail's edge, in the rail's own 200 ms, so every Odd stays in
-view. Its sessions run down the start side as a listbox; the selected one's
+reach again. Another tab or window in front brings the usual width back. Its sessions run down the start side as a listbox; the selected one's
 terminal fills the rest, and its details fold out over the terminal. The
 terminal refits at once and sends the session its size only once it settles
 (`ProjectTerminal.svelte`).
 They sit behind Advanced mode (`owner.advanced_at`), which the owner turns on
 in Setup's Advanced section (`AdvancedSection.svelte`, `PUT
 /api/setup/advanced`) after one warning. The page holds it in `advanced` in
-`windows.svelte.ts`: off, the top bar and the chat's plus menu offer no
+`windows.svelte.ts`: off, the Office tab and the chat's plus menu offer no
 Projects. Off, `/api/project-sessions` and its event stream answer 403
 (`ADVANCED_OFF`), and turning it off ends every open stream
 (`detachProjectViews`). Find existing reads Claude Code's own session files

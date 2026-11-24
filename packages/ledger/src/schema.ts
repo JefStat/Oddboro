@@ -31,12 +31,17 @@ import type { PersonaLink } from './personas.ts';
 import type { OfficeToolId } from './tools.ts';
 
 const at = (name: string) => timestamp(name, { withTimezone: true });
+
+/** One thing on the owner's desk, by its kind and id. */
+export type ItemRef = { kind: 'ask' | 'task' | 'report'; id: number };
 const created = (name = 'created_at') => at(name).notNull().defaultNow();
 const id = () => integer().primaryKey().generatedAlwaysAsIdentity();
 
 export const staff = pgTable('staff', {
   id: text().primaryKey(),
   name: text().notNull(),
+  /** Original name in a Claude agent file, even when the owner names the hire differently. */
+  claudeAgentName: text(),
   role: text().notNull(),
   office: text().notNull().default('Main Street'),
   sprite: text().notNull().default('staff'),
@@ -515,8 +520,12 @@ export const asks = pgTable(
     via: text(),
     status: text().$type<AskStatus>().notNull().default('open'),
     reason: text(),
+    /** Other items on the desk this one waits on (`after` on the tool that raised it). */
+    needs: jsonb().$type<ItemRef[]>().notNull().default([]),
     createdAt: created(),
-    decidedAt: at('decided_at')
+    decidedAt: at('decided_at'),
+    /** When the owner deleted it: gone from every view but its Odd's Deleted list. */
+    hiddenAt: at('hidden_at')
   },
   (t) => [
     // States no work change writes (work/state.ts), refused so a bug cannot store one.
@@ -580,8 +589,12 @@ export const tasks = pgTable(
      * brought back.
      */
     withdrawn: boolean().notNull().default(false),
+    /** Other items on the desk this one waits on (`after` on the tool that raised it). */
+    needs: jsonb().$type<ItemRef[]>().notNull().default([]),
     createdAt: created(),
-    doneAt: at('done_at')
+    doneAt: at('done_at'),
+    /** When the owner deleted it: gone from every view but its Odd's Deleted list. */
+    hiddenAt: at('hidden_at')
   },
   (t) => [
     // States no work change writes (work/state.ts), refused so a bug cannot store one.
@@ -597,7 +610,9 @@ export const reports = pgTable('reports', {
   title: text().notNull(),
   body: text().notNull(),
   createdAt: created(),
-  readAt: at('read_at')
+  readAt: at('read_at'),
+  /** When the owner deleted it: gone from every view but its Odd's Deleted list. */
+  hiddenAt: at('hidden_at')
 });
 
 /**
@@ -888,6 +903,11 @@ export const jobs = pgTable('jobs', {
   owed: jsonb().$type<string[]>(),
   /** The run a `latest` job skipped, while it waits on the desk's While you were away card. */
   skippedAt: at('skipped_at'),
+  /**
+   * When the owner removed a job that had run. It never runs or lists again,
+   * and its runs keep their record (`deleteJob`).
+   */
+  removedAt: at('removed_at'),
   createdAt: created()
 });
 
@@ -1119,7 +1139,10 @@ export const parts = pgTable(
   (t) => [primaryKey({ columns: [t.kind, t.name] })]
 );
 
-/** Tokens one run used, per model. Read from the run's own result. */
+/**
+ * Tokens one run used, per model. Read from the run's own result, less what
+ * earlier runs of the same session already counted (`recordUsage`).
+ */
 export const usage = pgTable(
   'usage',
   {
@@ -1128,6 +1151,11 @@ export const usage = pgTable(
     staffId: text().references(() => staff.id),
     kind: text().$type<UsageKind>().notNull(),
     model: text().notNull(),
+    /**
+     * The session the run went on, when its tool reports a running total for
+     * the whole session (Claude Code and Codex). Null when it reports the run alone.
+     */
+    session: text(),
     inputTokens: integer().notNull().default(0),
     outputTokens: integer().notNull().default(0),
     cacheReadTokens: integer().notNull().default(0),
@@ -1138,9 +1166,50 @@ export const usage = pgTable(
     ),
     /** What the run would cost at API list prices. The owner's plan does not bill it. */
     costUsd: doublePrecision().notNull().default(0),
+    /** What the run was for: its job's name or its ask's title. Null for a chat, and for rows from before it was kept. */
+    label: text(),
     createdAt: created()
   },
-  (t) => [index('usage_by_staff').on(t.staffId, t.createdAt)]
+  (t) => [
+    index('usage_by_staff').on(t.staffId, t.createdAt),
+    index('usage_by_session').on(t.session, t.model)
+  ]
+);
+
+/**
+ * An Odd's chat, one row per exchange: the owner's words and the Odd's reply,
+ * or a line the Odd said alone, like a hello or a poke. The chat's file
+ * (`chat.jsonl` in the Odd's folder) is what the page shows; this is what
+ * `search_chats` searches, so a chat that rolled into a fresh session can
+ * still find what was said before (chat-history.ts).
+ */
+export const chatHistory = pgTable(
+  'chat_history',
+  {
+    id: id(),
+    staffId: text()
+      .notNull()
+      .references(() => staff.id),
+    /** The owner's turn it answers, or `at:<time>` for a line the Odd said alone. One row each. */
+    key: text().notNull(),
+    /** The run that wrote the reply. A thread a chat started lists it in `threads.runs`. */
+    runId: text(),
+    at: at('at').notNull(),
+    owner: text().notNull().default(''),
+    reply: text().notNull().default(''),
+    embedding: vector({ dimensions: 768 }),
+    /** Which model made `embedding` (`EMBED_MODEL`). */
+    embeddingModel: text()
+  },
+  (t) => [
+    unique('chat_history_one_row').on(t.staffId, t.key),
+    index('chat_history_by_run').on(t.runId),
+    index('chat_history_embedding').using('hnsw', t.embedding.op('vector_cosine_ops')),
+    index('chat_history_words').using(
+      'gin',
+      sql`to_tsvector('english', ${t.owner} || ' ' || ${t.reply})`
+    )
+  ]
 );
 
 /**
@@ -1187,6 +1256,16 @@ export const planLimits = pgTable('plan_limits', {
  * furniture in an office already lived in. `spec` is what Claude wrote, for
  * redrawing.
  */
+/** One version of a layout: everything a change to it replaces. */
+export type OfficeVersion = {
+  name: string;
+  description: string;
+  spec: OfficeSpec;
+  plan: FloorPlan;
+  templates: Record<string, RoomTemplate>;
+  kinds: Record<string, RoomKind>;
+};
+
 export const offices = pgTable('offices', {
   id: id(),
   name: text().notNull(),
@@ -1198,7 +1277,9 @@ export const offices = pgTable('offices', {
   kinds: jsonb().$type<Record<string, RoomKind>>().notNull(),
   active: boolean().notNull().default(false),
   createdAt: at('created_at').notNull().defaultNow(),
-  movedInAt: at('moved_in_at')
+  movedInAt: at('moved_in_at'),
+  /** The layout as it was before its last change, to undo it. Undoing swaps the two. */
+  previous: jsonb().$type<OfficeVersion>()
 });
 
 /**

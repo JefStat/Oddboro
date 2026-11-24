@@ -19,6 +19,7 @@ import {
   AGENT_NAMES,
   drawsLooks,
   home,
+  hostEnv,
   MODELS as AGENT_MODELS,
   OFFICE_ACCOUNT,
   OFFICE_MODEL_VAR,
@@ -119,10 +120,12 @@ export function modelArgs(): string[] {
  * `GIT_DIR` or `GIT_CONFIG_PARAMETERS`), since the owner's git settings never
  * shape an Odd's git: a run with a shell gets the office's own (`gitEnv`).
  * Nor `ODDBORO_SECRETS`: only the office itself holds the pipes to the app's
- * Keychain.
+ * Keychain. In the Linux app it starts from the computer's own library path
+ * (`hostEnv`): a sign-in opens the browser with `xdg-open`, which fails on the
+ * AppImage's older glib, so Sign in did nothing (#281).
  */
 export function cleanEnv(): NodeJS.ProcessEnv {
-  const env = { ...process.env };
+  const env = { ...hostEnv() };
   for (const k of Object.keys(env))
     if (
       k === 'CLAUDECODE' ||
@@ -138,6 +141,19 @@ export function cleanEnv(): NodeJS.ProcessEnv {
       delete env[k];
   env.CLAUDE_CODE_DISABLE_CLAUDE_MDS = '1';
   env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
+  return env;
+}
+
+/**
+ * `env` with no Anthropic API key, under any case of its name. A run never
+ * gets the key from the owner's own environment (`staffEnv`), so the sign-in
+ * check must not count one either. With one set in Windows, `claude auth
+ * status` said signed in, the Office account read as signed in with no
+ * email, and every run said "Not logged in" (#343). Windows reads a
+ * variable's name in any case, so a `delete` of one spelling could miss it.
+ */
+function withoutHostKey(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  for (const k of Object.keys(env)) if (k.toUpperCase() === 'ANTHROPIC_API_KEY') delete env[k];
   return env;
 }
 
@@ -198,7 +214,7 @@ function readStatus(
     }
   };
   probe(cmd, [...before, 'auth', 'status'], {
-    env: dir ? { ...cleanEnv(), CLAUDE_CONFIG_DIR: dir } : cleanEnv(),
+    env: withoutHostKey(dir ? { ...cleanEnv(), CLAUDE_CONFIG_DIR: dir } : cleanEnv()),
     timeout: 15_000
   }).then(
     (r) => done(signedIn(r)),
@@ -265,8 +281,7 @@ export function pluginsOff(): Record<string, false> {
  * that leaked in from a parent session.
  */
 export function staffEnv(claudeDir?: string): NodeJS.ProcessEnv {
-  const env = runEnv('claude');
-  delete env.ANTHROPIC_API_KEY;
+  const env = withoutHostKey(runEnv('claude'));
   if (claudeSettings().auth === 'key') env.ANTHROPIC_API_KEY = apiKey();
   // The account's own Claude Code folder: its login, settings and sessions.
   if (claudeDir) env.CLAUDE_CONFIG_DIR = claudeDir;
@@ -386,6 +401,9 @@ export type ClaudeRun = CliRun & {
  */
 export function claudeLaunch(r: ClaudeRun): Launch {
   const env = staffEnv(r.toolDir || undefined);
+  // Outside tools wait behind tool search (`ALWAYS_LOADED`).
+  const searched = Object.keys(r.servers).some((name) => !ALWAYS_LOADED.has(name));
+  if (searched) env.ENABLE_TOOL_SEARCH = 'true';
   const pictures =
     r.pictures ??
     r.images?.map((i) => ({
@@ -430,7 +448,11 @@ export function claudeLaunch(r: ClaudeRun): Launch {
   const writeFiles = (): (() => void) => {
     mkdirSync(home('mcp'), { recursive: true, mode: 0o700 });
     const mode = { mode: 0o600 };
-    writeFileSync(files.mcp, JSON.stringify({ mcpServers: configServers(r.servers) }), mode);
+    const servers = Object.entries(configServers(r.servers)).map(([name, s]) => [
+      name,
+      ALWAYS_LOADED.has(name) ? { ...s, alwaysLoad: true } : s
+    ]);
+    writeFileSync(files.mcp, JSON.stringify({ mcpServers: Object.fromEntries(servers) }), mode);
     writeFileSync(files.settings, JSON.stringify(settings()), mode);
     writeFileSync(files.prompt, r.system, mode);
     return () => {
@@ -450,7 +472,8 @@ export function claudeLaunch(r: ClaudeRun): Launch {
     [
       ...(r.officeFiles ? [] : ['Read,Glob,Grep,Write,Edit']),
       ...(r.commands ? ['Bash'] : []),
-      ...(r.web ? ['WebSearch,WebFetch'] : [])
+      ...(r.web ? ['WebSearch,WebFetch'] : []),
+      ...(searched ? ['ToolSearch'] : [])
     ].join(','),
     '--permission-mode',
     'dontAsk',
@@ -490,6 +513,15 @@ export function claudeLaunch(r: ClaudeRun): Launch {
     ...stream
   };
 }
+
+/**
+ * The office's own servers, whose tools every run holds in full, since most
+ * runs use them. An outside tool's server waits behind Claude Code's tool
+ * search: the run sees its tools' names, and loads a tool's whole description
+ * only to use it. A run starts with each outside tool's description otherwise,
+ * every one of them, which on a connector of a hundred tools is most of the run.
+ */
+export const ALWAYS_LOADED = new Set(['office', 'files']);
 
 /**
  * The office's own run: no tools, no MCP server, none of the owner's
@@ -584,9 +616,28 @@ export function claudeReader(
       events.push({ type: 'session', id: session });
     }
     if (e.type === 'rate_limit_event') events.push({ type: 'plan', info: e.rate_limit_info });
+    // Each model call's message says what it read: the session as it stands.
+    if (e.type === 'assistant') {
+      const u = (e.message as { usage?: Record<string, unknown> } | undefined)?.usage;
+      const read = (k: string) => (typeof u?.[k] === 'number' ? u[k] : 0);
+      if (u)
+        events.push({
+          type: 'context',
+          tokens:
+            read('input_tokens') +
+            read('cache_read_input_tokens') +
+            read('cache_creation_input_tokens')
+        });
+    }
     // Claude Code's own shape for it, which the ledger's usage reads as it is.
+    // Claude Code counts it for the whole session, earlier runs of a resumed
+    // one included, so it names the session. Grok's is not known to.
     if (e.type === 'result' && e.modelUsage)
-      events.push({ type: 'usage', usage: e.modelUsage as ModelUsage });
+      events.push({
+        type: 'usage',
+        usage: e.modelUsage as ModelUsage,
+        ...(agent === 'claude' && session ? { session } : {})
+      });
     for (const name of streamTools(agent, e)) events.push({ type: 'tool', name });
     if (e.type === 'stream_event') {
       const ev = e.event as { type: string; delta?: { type: string; text?: string } };
