@@ -46,7 +46,7 @@ export async function grantAccess(
   if (!grantWorks(req.level, who.permission))
     throw new Error(`${who.name} holds ${who.permission}, so it cannot be given ${req.level}`);
   if (req.another && named.config.google !== req.another)
-    throw new Error(`Only Gmail and Google Drive take another account`);
+    throw new Error(`Only Gmail, Google Drive and Google Calendar take another account`);
   const conn = req.another ? await addGoogleAccount(req.another) : named;
   const saveGrant = (store: Tx | typeof db) =>
     store

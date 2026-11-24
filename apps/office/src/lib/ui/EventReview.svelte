@@ -187,7 +187,8 @@
     f.startDate = date;
     f.startTime = time;
     const key = presetOf(parseRule(f.recurrence, wasDate, f.zone), wasDate);
-    if (date && date !== wasDate && key !== 'none' && key !== 'custom') {
+    // One occurrence keeps its series' rule: only the whole or the rest repeat anew.
+    if (date && date !== wasDate && f.scope !== 'this' && key !== 'none' && key !== 'custom') {
       const p = presets(date).find((x) => x.key === key)?.repeat;
       if (p)
         f.recurrence = [

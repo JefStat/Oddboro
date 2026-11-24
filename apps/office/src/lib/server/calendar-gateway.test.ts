@@ -340,6 +340,24 @@ test('at Act a change to an event with guests on it waits too, and a change to o
   assert.match(held.title, /^Change "Team lunch" and email 1 person/);
 });
 
+test('a held change without its event card emails nobody on the click: the tool refuses it', async () => {
+  // Google could not be read as it was held, so the desk showed a plain call
+  // and never named the guests. The click must not email them.
+  const { makeCall } = await import('./gateway.ts');
+  onEvent = [{ email: OWNER, self: true }, { email: 'bo@example.com' }];
+  google.length = 0;
+  try {
+    const result = await makeCall(
+      { connector: ID, tool: 'update_event', arguments: { event_id: 'ev1', location: 'Cafe' } },
+      'abe'
+    );
+    assert.equal(result.ok, false);
+    assert.equal(writes().length, 0);
+  } finally {
+    onEvent = [];
+  }
+});
+
 test("at Act the owner's own reminders and colour on an event with guests go at once, and email nobody", async () => {
   const { token } = openGateway([{ connector: await calendar(), level: 'act' }], 60_000, {
     staffId: 'abe',

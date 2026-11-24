@@ -516,9 +516,41 @@ test('"this and following" ends the series the day before and starts a new one w
     dateTime: '2026-11-20T10:00:00-08:00',
     timeZone: 'America/Los_Angeles'
   });
-  assert.deepEqual(b.attendees, [{ email: OWN_ADDRESS }, { email: 'ada@example.com' }]);
+  // Everyone's answer carries over, so nobody is asked again.
+  assert.deepEqual(b.attendees, [
+    { email: OWN_ADDRESS, responseStatus: 'accepted' },
+    { email: 'ada@example.com', responseStatus: 'accepted' }
+  ]);
   // The same Zoom link, carried over, never a new one.
   assert.equal((b.conferenceData as { conferenceId: string }).conferenceId, 'zoom-1');
+});
+
+test('"this and following" with only reminders still makes a new series for the guests, so it waits', async (t) => {
+  const sent = store(t, { series: weekly, [third.id]: third });
+  const r = await client.callTool({
+    name: 'update_event',
+    arguments: {
+      event_id: third.id,
+      scope: 'following',
+      reminders: { use_default: false, overrides: [{ method: 'popup', minutes: 30 }] }
+    }
+  });
+  assert.equal(r.isError, true);
+  assert.match(JSON.stringify(r.content), /ada@example\.com/);
+  assert.equal(writesOf(sent).length, 0);
+});
+
+test('"this and following" on a series someone else organizes is refused', async (t) => {
+  const theirs = { ...weekly, organizer: { email: 'ada@example.com' } };
+  const sent = store(t, { series: theirs, [third.id]: third });
+  const r = await client.callTool({
+    name: 'update_event',
+    arguments: { event_id: third.id, scope: 'following', location: 'Cafe' },
+    ...yes
+  });
+  assert.equal(r.isError, true);
+  assert.match(JSON.stringify(r.content), /Only the organizer/);
+  assert.equal(writesOf(sent).length, 0);
 });
 
 test('a new series that fails gives the old one its rule back', async (t) => {

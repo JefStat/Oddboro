@@ -407,7 +407,9 @@ export async function makeCall(
   const client = await upstream(c);
   try {
     const r = (await client.callTool(
-      { name: call.tool, arguments: call.arguments, ...forOdd(c, staffId, true) },
+      // The owner's yes covers only what the desk showed them: a calendar event
+      // held without its card (Google could not be read then) sends no email.
+      { name: call.tool, arguments: call.arguments, ...forOdd(c, staffId, !!call.event) },
       undefined,
       { timeout: 5 * 60_000 }
     )) as CallToolResult;

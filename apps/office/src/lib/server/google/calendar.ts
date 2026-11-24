@@ -407,8 +407,12 @@ export async function eventHold(
       view: async () => ({
         account,
         now: target.summary,
-        others: others(target.attendees, account),
-        before: viewOf(target),
+        // A change to the series goes to the series' guests, so the card shows them.
+        others: others((plan.scope === 'this' ? target : (series ?? target)).attendees, account),
+        before:
+          plan.scope === 'this' || !series
+            ? viewOf(target)
+            : { ...viewOf(target), attendees: viewOf(series).attendees },
         ...(await seriesOf(token, a.data.calendar_id ?? 'primary', target, series)),
         ...(await choices(token))
       })

@@ -382,6 +382,10 @@ export async function planChange(
   }
   if (scope === 'this' && args.recurrence !== undefined)
     throw new Error('One occurrence cannot repeat on its own. Use scope "following" or "all".');
+  if (scope === 'following' && series?.organizer && !series.organizer.self)
+    throw new Error(
+      'Only the organizer can change this and following events. Change this event, or ask the organizer.'
+    );
   if ((scope === 'this' || scope === 'following') && args.move_to_calendar_id)
     throw new Error('Only a whole event moves to another calendar. Use scope "all".');
   if (scope === 'all' && args.recurrence?.length === 0)
@@ -413,15 +417,18 @@ export async function planChange(
           ...added.filter((g) => !has(g.email))
         ]
       : undefined;
-  const emailed = personalOnly(args)
-    ? []
-    : unique([
-        ...on,
-        ...others(
-          added.filter((g) => !has(g.email)),
-          account
-        )
-      ]);
+  // Splitting a series makes a new one for everyone on it, so it is never
+  // the owner's alone, whatever it changes.
+  const emailed =
+    personalOnly(args) && scope !== 'following'
+      ? []
+      : unique([
+          ...on,
+          ...others(
+            added.filter((g) => !has(g.email)),
+            account
+          )
+        ]);
   return { emailed, others: on, scope, target, series, attendees };
 }
 
@@ -590,7 +597,9 @@ export async function splitSeries(
       email: a.email,
       ...(a.displayName ? { displayName: a.displayName } : {}),
       ...(a.optional ? { optional: true } : {}),
-      ...(a.resource ? { resource: true } : {})
+      ...(a.resource ? { resource: true } : {}),
+      // Google's own answer, kept so nobody's reply resets to "awaiting".
+      ...(a.responseStatus ? { responseStatus: a.responseStatus } : {})
     })),
     reminders: series.reminders,
     transparency: series.transparency,

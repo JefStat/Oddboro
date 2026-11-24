@@ -352,7 +352,9 @@ export function consequence(held: Held, version: Record<string, unknown>, f: For
   if (f.scope === 'following') out.push('Changes this and every following event.');
   if (f.scope === 'all' || (!isNew && !f.scope && held.event.before?.recurrence?.length))
     out.push('Changes every event in the series.');
-  const personal = !isNew && Object.keys(version).every((k) => PERSONAL.has(k));
+  // A split makes a new series for everyone on it, so it is never personal.
+  const personal =
+    !isNew && f.scope !== 'following' && Object.keys(version).every((k) => PERSONAL.has(k));
   if (isNew) {
     if (f.guests.length) out.push(`Google will email an invite to ${list(f.guests)}.`);
     else out.push('Nobody else gets an email. It goes on your calendar only.');
