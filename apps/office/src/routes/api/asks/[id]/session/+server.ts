@@ -4,9 +4,12 @@
 // in one transaction (`approveSession`), so the run the answer starts finds it
 // shared and an ask answered meanwhile shares nothing. A refusal, such as an
 // interactive session that needs /bg first, leaves the ask open and says why.
+// /bg carries a conversation on in a new session, so the ask's session is
+// followed to the one it runs in now (`continuedAs`).
 import { error, json } from '@sveltejs/kit';
 import { advancedMode, approveSession, ask } from '@oddboro/ledger';
 import { ADVANCED_OFF, projectController } from '#lib/server/project-sessions/controller.ts';
+import { continuedAs } from '#lib/server/project-sessions/claude-sessions.ts';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ params, request }) => {
@@ -18,9 +21,11 @@ export const POST: RequestHandler = async ({ params, request }) => {
   if (!asked || asked.kind !== 'session' || !asked.session)
     error(404, 'No session ask by that number');
   if (asked.status !== 'open') error(409, 'That ask is answered already');
-  const { nativeId, folder, title } = asked.session;
+  const { folder, title } = asked.session;
   let connected: string;
+  let nativeId: string;
   try {
+    nativeId = await continuedAs(asked.session.nativeId);
     connected = (await projectController().connect('claude', folder, nativeId, title)).id;
   } catch (e: unknown) {
     error(409, e instanceof Error ? e.message : 'The office could not connect that session.');
@@ -30,7 +35,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
     approved = await approveSession(
       id,
       asked.staffId,
-      { ...asked.session, connected },
+      { ...asked.session, nativeId, connected },
       reason || null
     );
   } catch (e: unknown) {

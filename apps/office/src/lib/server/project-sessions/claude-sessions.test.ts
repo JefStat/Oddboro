@@ -6,7 +6,7 @@ import { mkdtemp, mkdir, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { claudeHome, savedClaudeSessions } from './claude-sessions.ts';
+import { claudeHome, continuedAs, savedClaudeSessions } from './claude-sessions.ts';
 
 const lines = (...rows: unknown[]) => rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
 const user = (content: unknown, extra: object = {}) => ({
@@ -115,4 +115,45 @@ test('a long folder finds its hashed key, and only its own folder counts', async
 test("Claude's folder follows CLAUDE_CONFIG_DIR, as the native client does", () => {
   assert.equal(claudeHome({ CLAUDE_CONFIG_DIR: '/accounts/work' }), '/accounts/work');
   assert.match(claudeHome({}), /\.claude$/);
+});
+
+test('a conversation /bg carried on in a new session is found as that session, in any project folder, however many times it moved', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'office-claude-'));
+  try {
+    // Claude keeps a transcript under the folder the conversation began in, which can differ from where it runs now.
+    const dir = join(home, 'projects', '-work-my-app-v2-workspace');
+    await mkdir(dir, { recursive: true });
+    const [first, second, third, alone] = Array.from({ length: 4 }, () => randomUUID());
+    const moved = (to: string) =>
+      lines(user('Hi'), { type: 'continued-in', sessionId: 'x', continuedInSessionId: to });
+    await writeFile(join(dir, first + '.jsonl'), moved(second));
+    // The newest session has no transcript yet while its background job starts.
+    await writeFile(join(dir, second + '.jsonl'), moved(third));
+    await writeFile(join(dir, alone + '.jsonl'), lines(user('Hi')));
+
+    assert.equal(await continuedAs(first, home), third);
+    assert.equal(await continuedAs(third, home), third);
+    assert.equal(await continuedAs(alone, home), alone);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test('a continued-in record that names no session, or names a loop, ends the search at the last real one', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'office-claude-'));
+  try {
+    const dir = join(home, 'projects', '-work');
+    await mkdir(dir, { recursive: true });
+    const [a, b, odd] = Array.from({ length: 3 }, () => randomUUID());
+    const moved = (to: string) => lines({ type: 'continued-in', continuedInSessionId: to });
+    await writeFile(join(dir, a + '.jsonl'), moved(b));
+    await writeFile(join(dir, b + '.jsonl'), moved(a));
+    await writeFile(join(dir, odd + '.jsonl'), moved('not-a-session'));
+
+    const found = await continuedAs(a, home);
+    assert.ok(found === a || found === b, found);
+    assert.equal(await continuedAs(odd, home), odd);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
 });

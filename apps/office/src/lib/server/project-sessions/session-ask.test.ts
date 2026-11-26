@@ -4,7 +4,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { mkdirSync, realpathSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mock, test } from 'node:test';
 import { L, folder, refusal, request } from '../office-under-test.ts';
@@ -131,4 +132,36 @@ test('an ask answered already is refused before anything connects', async () => 
     (await L.projectConnections()).find((s) => s.nativeId === nativeId),
     undefined
   );
+});
+
+test('a session the owner moved to the background with /bg is connected as the new session it runs in', async (t) => {
+  await L.setAdvancedMode(true);
+  const project = join(folder, 'session-moved');
+  mkdirSync(project);
+  const before = randomUUID();
+  const after = randomUUID();
+  // Claude Code ends the old transcript with a record naming the session it carries on in.
+  const home = mkdtempSync(join(tmpdir(), 'office-claude-'));
+  const was = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = home;
+  t.after(() => {
+    if (was === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+    else process.env.CLAUDE_CONFIG_DIR = was;
+    rmSync(home, { recursive: true, force: true });
+  });
+  mkdirSync(join(home, 'projects', '-elsewhere'), { recursive: true });
+  writeFileSync(
+    join(home, 'projects', '-elsewhere', before + '.jsonl'),
+    JSON.stringify({ type: 'continued-in', sessionId: before, continuedInSessionId: after }) + '\n'
+  );
+  running = [{ id: after, title: 'App work (2)', updated: Date.now(), live: true, job: 'job-4' }];
+  const id = await sessionAsk(realpathSync(project), before, 'interactive');
+
+  const res = await answer(id);
+
+  assert.equal(res.status, 200, await res.clone().text());
+  const { session } = (await res.json()) as { session: string };
+  t.after(() => projectController().disconnect(session));
+  assert.equal((await L.connection(session))?.nativeId, after);
+  assert.equal((await L.ask(id))?.session?.nativeId, after);
 });

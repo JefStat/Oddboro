@@ -153,3 +153,44 @@ export async function savedClaudeSessions(
   }
   return rows.sort((a, b) => b.lastModified - a.lastModified);
 }
+
+/** The most times one conversation is followed from session to session. */
+const MOVES_MAX = 20;
+
+/**
+ * The session a conversation runs in now. Moving it to the background (/bg)
+ * carries it on in a new session, and Claude Code ends the old transcript with
+ * a `continued-in` record naming it. The transcript sits under the folder the
+ * conversation began in, which can differ from where it runs now, so every
+ * project folder is looked in. With no such record, the session is its own.
+ */
+export async function continuedAs(sessionId: string, home = claudeHome()): Promise<string> {
+  const projects = join(home, 'projects');
+  const dirs = await readdir(projects).catch(() => [] as string[]);
+  const seen = new Set<string>();
+  let id = sessionId;
+  for (let moves = 0; moves < MOVES_MAX && !seen.has(id); moves++) {
+    seen.add(id);
+    const file = await firstFile(dirs.map((dir) => join(projects, dir, id + '.jsonl')));
+    if (!file) return id;
+    const info = await stat(file);
+    const { tail } = await ends(file, info.size);
+    const next = entries(tail).findLast((r) => r.type === 'continued-in')?.continuedInSessionId;
+    if (!next || !UUID.test(next)) return id;
+    id = next;
+  }
+  return id;
+}
+
+/** The first of `paths` that is a file, or undefined. */
+async function firstFile(paths: string[]): Promise<string | undefined> {
+  for (const path of paths)
+    if (
+      await stat(path).then(
+        (s) => s.isFile(),
+        () => false
+      )
+    )
+      return path;
+  return undefined;
+}
