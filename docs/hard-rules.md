@@ -43,7 +43,10 @@ keeps needing a yes however far the owner trusts the Odd (decided
 2026-11-11). Revoking the grant or lowering the level ends it at
 the next run. A yes counts only from the
 owner's own page: the office refuses an action any other site sends it
-(decided 2026-11-04).
+(decided 2026-11-04). A native project session is the owner's own agent, not
+an Odd, and acts as the owner. An Odd's request reaches it only on the
+owner's yes, or on that session's leave to send without asking, and its
+result gives the Odd no new authority (decided 2026-11-24).
 
 ## 5. No commits or pushes without the owner saying so.
 
