@@ -3,13 +3,18 @@
 // the command, its path, or what it printed.
 import assert from 'node:assert/strict';
 import childProcess from 'node:child_process';
-import { chmodSync, writeFileSync } from 'node:fs';
+import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mock, test } from 'node:test';
-import { CLAUDE_LIST_FAILED, claudeProjects } from './claude-project.ts';
+import {
+  CLAUDE_LIST_FAILED,
+  claudeProjects,
+  openClaudeSessions,
+  openSessionsFor
+} from './claude-project.ts';
 
 /** The office's words for each system it runs on, written out. */
 const NOT_INSTALLED: [NodeJS.Platform, string][] = [
@@ -117,6 +122,114 @@ test('when Claude Code does not answer in time, listing a project says it could 
   } finally {
     mock.restoreAll();
     syncBuiltinESMExports();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+/** The open sessions with PATH only `path`. */
+async function openWith(path: string) {
+  const was = process.env.PATH;
+  process.env.PATH = path;
+  try {
+    return await openClaudeSessions();
+  } finally {
+    process.env.PATH = was;
+  }
+}
+
+test(
+  'every open session on this computer is listed, each folder asked of no one, and an entry with no session left out',
+  { skip: process.platform === 'win32' && 'the stand-in is a shell script' },
+  async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'office-claude-open-')));
+    try {
+      const listed = [
+        {
+          pid: 1,
+          cwd: '/work/a',
+          kind: 'interactive',
+          sessionId: '11111111-1111-4111-8111-111111111111',
+          name: 'A work',
+          status: 'busy'
+        },
+        {
+          pid: 2,
+          cwd: '/work/b',
+          kind: 'background',
+          sessionId: '22222222-2222-4222-8222-222222222222',
+          id: 'job-2',
+          status: 'idle'
+        },
+        { pid: 3, cwd: '/work/c', kind: 'interactive', status: 'idle' },
+        { pid: 4, cwd: '/work/d', kind: 'interactive', sessionId: 'not-a-session', name: 5 }
+      ];
+      writeFileSync(
+        join(root, 'claude'),
+        `#!/bin/sh\necho "$@" > "${join(root, 'args')}"\necho '${JSON.stringify(listed)}'\n`
+      );
+      chmodSync(join(root, 'claude'), 0o755);
+
+      const { open, why } = await openWith(root);
+
+      assert.equal(why, undefined);
+      assert.deepEqual(open, [
+        {
+          nativeId: listed[0].sessionId,
+          folder: '/work/a',
+          title: 'A work',
+          kind: 'interactive',
+          status: 'busy'
+        },
+        {
+          nativeId: listed[1].sessionId,
+          folder: '/work/b',
+          title: 'Claude Code',
+          kind: 'background',
+          status: 'idle'
+        }
+      ]);
+      assert.equal(readFileSync(join(root, 'args'), 'utf8').trim(), 'agents --json');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+);
+
+test('with no Claude Code on this computer, no session is listed, and why says so in plain words', async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'office-claude-open-')));
+  try {
+    const { open, why } = await openWith(root);
+
+    assert.deepEqual(open, []);
+    assert.equal(why, CLAUDE_LIST_FAILED.missing());
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('only a chat that reads no lesson, with Advanced mode on, is told of open sessions, and a failed check says so', async () => {
+  const on = async () => true;
+  const off = async () => false;
+  const broken = async (): Promise<boolean> => {
+    throw new Error('no database');
+  };
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'office-claude-open-')));
+  const was = process.env.PATH;
+  process.env.PATH = root;
+  try {
+    assert.equal(await openSessionsFor({}, on), undefined);
+    assert.equal(await openSessionsFor({ ownerSaid: 'Hi', lessonRun: true }, on), undefined);
+    assert.equal(await openSessionsFor({ ownerSaid: 'Hi' }, off), undefined);
+    assert.deepEqual(await openSessionsFor({ ownerSaid: 'Hi' }, on), {
+      open: [],
+      why: CLAUDE_LIST_FAILED.missing()
+    });
+    assert.deepEqual(await openSessionsFor({ ownerSaid: 'Hi' }, broken), {
+      open: [],
+      why: 'The office could not tell whether Advanced mode is on.'
+    });
+  } finally {
+    process.env.PATH = was;
     await rm(root, { recursive: true, force: true });
   }
 });

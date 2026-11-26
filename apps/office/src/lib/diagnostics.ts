@@ -124,6 +124,7 @@ export const ROUTE_IDS = {
   '/api/asks/[id]/filter': true,
   '/api/asks/[id]/filter-preview': true,
   '/api/asks/[id]/folder': true,
+  '/api/asks/[id]/session': true,
   '/api/asks/[id]/original': true,
   '/api/asks/[id]/reply': true,
   '/api/backup': true,

@@ -40,6 +40,7 @@ after(() => rmSync(HOME, { recursive: true, force: true }));
 const {
   DECISIONS,
   approveCall,
+  approveSession,
   approveFilter,
   approveReply,
   ask: askRow,
@@ -255,6 +256,15 @@ const PINNED: Record<AskKind, Record<Decision, Pin>> = {
     },
     deny: NO,
     iterate: REWORK
+  },
+  session: {
+    approve: {
+      cell: { by: 'Connect the session from its card on the desk', then: ['carry_out'] },
+      onThread: ['carry_out:ada'],
+      onNone: ['carry_out:ada']
+    },
+    deny: NO,
+    iterate: REFUSED
   },
   goal: {
     approve: {
@@ -521,6 +531,23 @@ const raise: Record<AskKind, (onThread: boolean) => Promise<Raised>> = {
     });
     return { id: ask.id };
   },
+  session: async (on) => {
+    const threadId = on ? await thread() : undefined;
+    const { ask } = await raiseAsk('ada', {
+      kind: 'session',
+      title: 'Connect a Claude Code session',
+      why: 'w',
+      ifApproved: 'i',
+      session: {
+        nativeId: `00000000-0000-4000-8000-${String(++raised).padStart(12, '0')}`,
+        folder: '/tmp/project',
+        title: 'Project work',
+        kind: 'background'
+      },
+      threadId
+    });
+    return { id: ask.id };
+  },
   remove: async (on) => {
     const threadId = on ? await thread() : undefined;
     const odd = await another(false);
@@ -610,7 +637,12 @@ async function answer(
     await approveFilter(id, { ...asked.filter, created: { at, gmailId: 'g', tidied: 0 } });
   else if (decision === 'approve' && asked?.call)
     await approveCall(id, { ...asked.call, result: { ok: true, text: 'done', at } });
-  else if (decision === 'approve' && asked?.folder) {
+  else if (decision === 'approve' && asked?.session) {
+    const { nativeId, folder, title } = asked.session;
+    const { connectProject } = await import('../src/project-sessions.ts');
+    const s = await connectProject('claude', nativeId, folder, title);
+    await approveSession(id, asked.staffId, { ...asked.session, connected: s.id }, reason);
+  } else if (decision === 'approve' && asked?.folder) {
     const done = await giveFolder(id, asked.folder.path, asked.folder.level, reason);
     assert.ok('given' in done, JSON.stringify(done));
   } else if (decision === 'approve' && typeof cell === 'object' && 'by' in cell) {

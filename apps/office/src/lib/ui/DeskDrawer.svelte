@@ -18,6 +18,7 @@
   import ReplyReview from './ReplyReview.svelte';
   import FilterReview from './FilterReview.svelte';
   import FolderAsk from './FolderAsk.svelte';
+  import SessionAsk from './SessionAsk.svelte';
   import FolderWarning from './FolderWarning.svelte';
   import { call } from './api.ts';
   import { withActCheck } from './act-check.svelte.ts';
@@ -320,6 +321,12 @@
   const makeCall = (a: AskRow) =>
     act(async () => {
       await call(`/api/asks/${a.id}/call`, {});
+      show(undefined);
+    });
+  /** The office connects the session asked for and shares it with the Odd, then approves the ask. */
+  const connectSession = (a: AskRow) =>
+    act(async () => {
+      await call(`/api/asks/${a.id}/session`, { reason });
       show(undefined);
     });
   /** A held call's inputs, as the tool takes them, for the owner to read. */
@@ -770,6 +777,8 @@
                 oncancel={() => (folderWarning = '')}
               />
             {/if}
+          {:else if a.session}
+            <SessionAsk name={who(a.staffId)?.name ?? 'the Odd'} session={a.session} />
           {:else}
             <div>
               <dt class="text-xs text-muted">If you approve</dt>
@@ -854,8 +863,12 @@
             <button
               class="flex-1 rounded-lg bg-sea px-3 py-2 text-sm font-medium text-night disabled:opacity-40"
               disabled={busy || unsaved || (a.kind === 'plan' && !picked(a))}
-              onclick={() => (a.kind === 'call' ? makeCall(a) : decide(a, 'approve'))}
-              >{yesSaid(a, { picked: picked(a), busy })}</button
+              onclick={() =>
+                a.kind === 'call'
+                  ? makeCall(a)
+                  : a.kind === 'session'
+                    ? connectSession(a)
+                    : decide(a, 'approve')}>{yesSaid(a, { picked: picked(a), busy })}</button
             >
           {/if}
         </div>

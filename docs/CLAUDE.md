@@ -10,7 +10,7 @@ backlog. Read a doc's status before acting on it: **proposed** (not agreed),
 - `hard-rules.md`. **Ratified.** The reason behind each hard rule in the root `CLAUDE.md`, one section per rule, same order.
 - `code-standard.md`. **Ratified.** The twelve rules, Q1 to Q12, that code is written to and a pull request is reviewed against.
 - `architecture.md`. **Built.** The picture: the parts, one function per job, and where each new kind of thing starts and which check catches a missed place.
-- `project-sessions.md`. **Built.** Native Codex and Claude Code sessions: start or attach, permissions, and recovery.
+- `project-sessions.md`. **Built.** Native Codex and Claude Code sessions: how trust works, start or attach, permissions, and recovery.
 - `chat-update-boundaries.md`. **Built.** Update status and owner controls in chat, and the limits on untrusted instructions.
 
 ## Later

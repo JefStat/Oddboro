@@ -227,6 +227,12 @@ export const OWNER_ANSWERS = {
       approve: ['give_standing', 'answer_back'],
       deny: NO,
       iterate: 'refused'
+    },
+    // Raised only in a chat, so no rework run could raise it again: yes or no.
+    session: {
+      approve: { by: 'Connect the session from its card on the desk', then: ['carry_out'] },
+      deny: NO,
+      iterate: 'refused'
     }
   } satisfies Record<AskKind, AskAnswer>,
   task: {

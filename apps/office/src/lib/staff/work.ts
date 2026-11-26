@@ -89,6 +89,8 @@ export const OFFICE_TOOL_WORDS: Record<string, string> = {
   my_access: 'Checking its access',
   my_project_sessions: 'Checking project assignments',
   send_project_work: 'Sending a project assignment',
+  find_open_sessions: 'Looking at your open sessions',
+  ask_to_connect_session: 'Asking you to connect a session',
   my_asks: 'Checking its asks',
   my_tasks: 'Checking its tasks',
   my_goals: 'Checking its goals',

@@ -1,7 +1,7 @@
 // What a run's office tool server (mcp.ts in the ledger) is told about the run,
 // through its environment. The tool server trusts only these, never a tool
 // argument, so each one here is a rule the run is held to.
-import type { ChatUpdateStatus } from '@oddboro/ledger';
+import type { ChatUpdateStatus, OpenSession } from '@oddboro/ledger';
 
 /** What `officeEnv` needs to know about one run. */
 export type RunFacts = {
@@ -19,6 +19,12 @@ export type RunFacts = {
    * `tell_lead` copies each into the work.
    */
   ownerFiles?: { tag: string; path: string; name: string }[];
+  /**
+   * In a chat with Advanced mode on, the owner's open Claude Code sessions as
+   * the office read them when the run started, and why there are none when
+   * Claude Code could not list them.
+   */
+  openSessions?: { open: OpenSession[]; why?: string };
   /** The ask the owner approved that this run carries out. */
   approvedAsk?: number;
   /** The tools whose sign-ins ran out, which only this run knows. */
@@ -67,6 +73,8 @@ export function officeEnv(r: RunFacts): Record<string, string> {
     ...(r.chatExchange ? { CHAT_EXCHANGE: words(r.chatExchange) } : {}),
     // Whole, never cut: a list cut short would read as none.
     ...(r.ownerFiles?.length ? { OWNER_FILES: JSON.stringify(r.ownerFiles) } : {}),
+    // Whole too: it holds at most 50 short entries (`openClaudeSessions`).
+    ...(r.openSessions ? { OPEN_SESSIONS: JSON.stringify(r.openSessions) } : {}),
     ...(r.approvedAsk ? { APPROVED_ASK: String(r.approvedAsk) } : {}),
     ...(r.signedOut.length ? { SIGNED_OUT: r.signedOut.join(',') } : {}),
     ...(r.ownerNote ? { OWNER_NOTE: words(r.ownerNote) } : {}),

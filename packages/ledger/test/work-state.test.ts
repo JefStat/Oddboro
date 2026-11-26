@@ -85,6 +85,7 @@ const ask = (over: Partial<AskRow> = {}): AskRow => ({
   reply: null,
   filter: null,
   folder: null,
+  session: null,
   call: null,
   catchUp: null,
   switches: null,

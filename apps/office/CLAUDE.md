@@ -273,7 +273,11 @@ pieces under 3,900 bytes a line, so no value is on a command line.
    Settings tab's own change for that Odd in one step. Raise to Act shows the
    Act check first, until the owner passed it (below). A `standing` ask (an
    Odd's `ask_for_standing_yes`) takes Allow or Deny and no Iterate, and Allow
-   puts the tools on the grant. Each kind's yes button words live in
+   puts the tools on the grant. A `session` ask (an Odd's
+   `ask_to_connect_session`) opens in `SessionAsk.svelte` and takes Connect or
+   Deny: `/api/asks/[id]/session` connects the session as Projects does,
+   shares it with that Odd and approves the ask, and an interactive session
+   that never ran `/bg` leaves it open with that step. Each kind's yes button words live in
    `src/lib/ui/yes-said.ts` (`YES_SAID`), which the Desk imports and
    `yes-said.test.ts` holds. A `remove` ask (an Odd's `leave_office`, or the
    manager's `remove_odd`) takes Remove, and a `bring_back` ask (the

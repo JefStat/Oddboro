@@ -88,3 +88,21 @@ test('only an owner chat gets the updater snapshot', () => {
     update
   );
 });
+
+test("a chat's open sessions reach the tool server whole, with why there are none, and no list sets nothing", () => {
+  const open = [
+    {
+      nativeId: '11111111-1111-4111-8111-111111111111',
+      folder: '/work/app',
+      title: 'App work',
+      kind: 'interactive' as const,
+      status: 'busy' as const
+    }
+  ];
+  assert.deepEqual(JSON.parse(officeEnv({ ...plain, openSessions: { open } }).OPEN_SESSIONS), {
+    open
+  });
+  const none = { open: [], why: 'Claude Code is not installed on this Mac.' };
+  assert.deepEqual(JSON.parse(officeEnv({ ...plain, openSessions: none }).OPEN_SESSIONS), none);
+  assert.equal(officeEnv(plain).OPEN_SESSIONS, undefined);
+});

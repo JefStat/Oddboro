@@ -219,7 +219,8 @@ const RAISED_WITH: Record<AskKind, string | null> = {
   remove: null,
   bring_back: 'bring_back_odd',
   catch_up: null,
-  standing: 'ask_for_standing_yes'
+  standing: 'ask_for_standing_yes',
+  session: 'ask_to_connect_session'
 };
 
 test('the rework brief names the tool each kind an Odd can rework is raised with', () => {

@@ -13,6 +13,7 @@ import {
   type AccessRequest,
   type AskKind,
   type FolderRequest,
+  type SessionRequest,
   type GoalDraft,
   type GoalPlan,
   type HireProposal,
@@ -186,6 +187,24 @@ const samePlace = (
  * from another place, such as a hand-off, is its twin instead (`asksNoMore`),
  * so the owner's answer goes back to both.
  */
+/** One open session ask per Odd per session, unless this revises it. */
+async function refuseSecondSession(
+  tx: Tx,
+  staffId: string,
+  session: SessionRequest,
+  revises?: number
+): Promise<void> {
+  const open = await tx
+    .select()
+    .from(asks)
+    .where(and(eq(asks.staffId, staffId), eq(asks.kind, 'session'), eq(asks.status, 'open')));
+  const same = open.find((r) => r.id !== revises && r.session?.nativeId === session.nativeId);
+  if (same)
+    throw new AlreadyOnDesk(
+      `Your ask #${same.id} for this session is already there. To change it, call ask_to_connect_session again with revises: ${same.id}.`
+    );
+}
+
 async function refuseSecondFolder(
   tx: Tx,
   staffId: string,
@@ -287,6 +306,8 @@ export async function raiseAsk(
     odd?: string;
     /** A standing ask's tools (`ask_for_standing_yes`, standing.ts). */
     standing?: StandingRequest;
+    /** A session ask's open Claude Code session (`ask_to_connect_session`). */
+    session?: SessionRequest;
     /** Every kind but these says so; `approval`, `access` and `hire` follow from access or hire, and the office raises `hand_offs`, `window` and `catch_up` itself. */
     kind?: Exclude<AskKind, 'approval' | 'access' | 'hire' | 'hand_offs' | 'window' | 'catch_up'>;
     revises?: number;
@@ -351,6 +372,11 @@ export async function raiseAsk(
         if (!a.standing) break;
         await lockDesk(tx, staffId);
         await refuseSecondStanding(tx, staffId, a.standing, a.revises);
+        break;
+      case 'session':
+        if (!a.session) break;
+        await lockDesk(tx, staffId);
+        await refuseSecondSession(tx, staffId, a.session, a.revises);
         break;
       case 'call':
         // A held call the core finds open already, under this lock, so two at once raise one.

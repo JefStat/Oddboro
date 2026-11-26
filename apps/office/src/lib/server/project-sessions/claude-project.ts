@@ -12,9 +12,11 @@ import {
 } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import {
+  advancedMode,
   home,
   STAFF_SERVER,
   PROJECT_RECEIVERS,
+  type OpenSession,
   type ProjectSession,
   type ProjectRequest
 } from '@oddboro/ledger';
@@ -22,7 +24,7 @@ import { pathToFileURL } from 'node:url';
 import { AGENT_NAMES } from '@oddboro/ledger/agents';
 import { currentSystem, probe } from '@oddboro/ledger/platform';
 import { computerWord } from '@oddboro/ledger/system-words';
-import { nativeCommand, nativeEnv } from './native.ts';
+import { nativeCommand, nativeEnv, UUID } from './native.ts';
 import { savedClaudeSessions } from './claude-sessions.ts';
 type Active = {
   sessionId?: string;
@@ -62,12 +64,16 @@ function agentList(out: string): Active[] | undefined {
   return list.filter((a): a is Active => typeof a === 'object' && a !== null);
 }
 
-/** The Claude Code sessions running in `folder`, from `claude agents --json`. */
-async function claudeAgents(folder: string): Promise<Active[]> {
+/**
+ * The Claude Code sessions running in `folder`, from `claude agents --json`.
+ * With no folder, every session open on this computer.
+ */
+async function claudeAgents(folder?: string): Promise<Active[]> {
   const [exe, prefix] = nativeCommand('claude');
-  const r = await probe(exe, [...prefix, 'agents', '--json', '--cwd', folder], {
+  const where = folder ? ['--cwd', folder] : [];
+  const r = await probe(exe, [...prefix, 'agents', '--json', ...where], {
     env: nativeEnv(),
-    cwd: folder,
+    ...(folder ? { cwd: folder } : {}),
     timeout: 10000,
     maxBuffer: 4_000_000
   });
@@ -87,6 +93,64 @@ async function claudeAgents(folder: string): Promise<Active[]> {
       throw new Error(`claude agents came back as ${JSON.stringify(missed)}`);
     }
   }
+}
+
+/** The most open sessions a run is told of. */
+const OPEN_MAX = 50;
+const TITLE_MAX = 200;
+
+/**
+ * Every Claude Code session open on this computer, as an Odd's chat run is
+ * told of them (`OPEN_SESSIONS`). A Claude Code that is missing or cannot list
+ * them gives none, with the owner's words for why.
+ */
+export async function openClaudeSessions(): Promise<{ open: OpenSession[]; why?: string }> {
+  let listed: Active[];
+  try {
+    listed = await claudeAgents();
+  } catch (e: unknown) {
+    return { open: [], why: e instanceof Error ? e.message : CLAUDE_LIST_FAILED.failed };
+  }
+  // An entry Claude Code wrote in another shape is left out, never the whole list.
+  const open = listed.flatMap((a): OpenSession[] =>
+    typeof a.sessionId === 'string' && UUID.test(a.sessionId) && typeof a.cwd === 'string' && a.cwd
+      ? [
+          {
+            nativeId: a.sessionId,
+            folder: a.cwd,
+            title: (typeof a.name === 'string' && a.name ? a.name : AGENT_NAMES.claude).slice(
+              0,
+              TITLE_MAX
+            ),
+            kind: a.kind === 'background' ? 'background' : 'interactive',
+            status: a.status === 'busy' ? 'busy' : 'idle'
+          }
+        ]
+      : []
+  );
+  return open.length > OPEN_MAX
+    ? {
+        open: open.slice(0, OPEN_MAX),
+        why: `${open.length} sessions are open. The office lists the first ${OPEN_MAX}.`
+      }
+    : { open };
+}
+
+/**
+ * The open sessions a run is told of: only a chat that reads no lesson, with
+ * Advanced mode on. It never throws, so a run can start it early and await it late.
+ */
+export async function openSessionsFor(
+  run: { ownerSaid?: string; lessonRun?: boolean },
+  advanced: () => Promise<boolean> = advancedMode
+): Promise<{ open: OpenSession[]; why?: string } | undefined> {
+  if (!run.ownerSaid || run.lessonRun) return undefined;
+  try {
+    if (!(await advanced())) return undefined;
+  } catch {
+    return { open: [], why: 'The office could not tell whether Advanced mode is on.' };
+  }
+  return openClaudeSessions();
 }
 
 export async function claudeProjects(folder: string) {

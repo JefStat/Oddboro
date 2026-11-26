@@ -68,14 +68,13 @@ const held = await grantsFor(ME);
 const mailboxes = held
   .filter((g) => g.connector.config.google === 'gmail')
   .map((g) => ({ id: g.connectorId, account: g.connector.config.account }));
+// Project tools exist only while the owner keeps Advanced mode on.
+const advanced = process.env.LESSON_RUN !== '1' && (await advancedMode());
 /** This run, as the office tools' row conditions read it. */
 const RUN: ToolRun = {
   gmail: mailboxes.length > 0,
-  // Project tools exist only while the owner keeps Advanced mode on.
-  project:
-    process.env.LESSON_RUN !== '1' &&
-    (await advancedMode()) &&
-    (await projectConnections(ME)).length > 0,
+  project: advanced && (await projectConnections(ME)).length > 0,
+  advanced,
   write: held.some((g) => g.level === 'act'),
   skills: (await skillsOf(ME)).length > 0,
   chat: OWNER_SAID !== undefined,

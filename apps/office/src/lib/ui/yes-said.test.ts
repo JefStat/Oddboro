@@ -45,7 +45,11 @@ const SAID: Record<AskKind, [Partial<AskRow>, DeskNow, string][]> = {
   remove: [[{}, idle, 'Remove']],
   bring_back: [[{}, idle, 'Bring back']],
   catch_up: [[{}, idle, 'Approve']],
-  standing: [[{}, idle, 'Allow']]
+  standing: [[{}, idle, 'Allow']],
+  session: [
+    [{}, idle, 'Connect'],
+    [{}, { picked: 0, busy: true }, 'Connecting']
+  ]
 };
 
 test("an ask's yes button reads its kind's own words, for every kind of ask", () => {

@@ -43,7 +43,8 @@ const NAMES_UNHELD: Record<string, readonly string[]> = {
     'propose_goal_plan'
   ], // NEW-1716
   'task_done brief': ['give_owner_a_task', 'propose_hire', 'propose_goal_plan'], // NEW-1716
-  'carry_out brief': ['give_owner_a_task'], // NEW-1716
+  // A session yes shares the session first, so that run holds send_project_work; RUNS never sets `project`.
+  'carry_out brief': ['give_owner_a_task', 'send_project_work'], // NEW-1716
   'rework brief': [
     'ask_for_access',
     'propose_hire',
@@ -126,7 +127,21 @@ const ASK_ROWS: Record<AskKind, object[]> = {
   remove: [],
   bring_back: [],
   catch_up: [],
-  standing: []
+  standing: [],
+  session: [
+    {
+      ...asked,
+      kind: 'session',
+      status: 'approved',
+      session: {
+        nativeId: '00000000-0000-4000-8000-000000000001',
+        folder: '/work/app',
+        title: 'App work',
+        kind: 'background',
+        connected: 'row'
+      }
+    }
+  ]
 };
 const ASKS = Object.values(ASK_ROWS).flat() as unknown as AskRow[];
 const task = {

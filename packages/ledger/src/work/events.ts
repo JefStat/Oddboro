@@ -16,6 +16,7 @@ import type {
   AccessRequest,
   FileEdit,
   FolderRequest,
+  SessionRequest,
   GoalStatus,
   HeldCall,
   InChat,
@@ -74,6 +75,7 @@ export type AskDone = {
   filter?: GmailFilter;
   call?: HeldCall;
   folder?: FolderRequest;
+  session?: SessionRequest;
 };
 
 export type WorkEvent =

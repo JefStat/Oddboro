@@ -30,7 +30,8 @@ const YES_SAID: Record<AskKind, (a: AskRow, now: DeskNow) => string> = {
   remove: () => 'Remove',
   bring_back: () => 'Bring back',
   catch_up: () => 'Approve',
-  standing: () => 'Allow'
+  standing: () => 'Allow',
+  session: (_, { busy }) => (busy ? 'Connecting' : 'Connect')
 };
 
 /** The words on an ask's yes button on the Desk. */

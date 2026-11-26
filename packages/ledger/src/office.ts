@@ -101,6 +101,7 @@ export {
   approveReply,
   approveFilter,
   approveCall,
+  approveSession,
   type CallPlace,
   raiseCall,
   callResultText,

@@ -155,6 +155,9 @@ export type AccountRow = typeof accounts.$inferSelect;
  * yes does it (`removeOdd`, `bringBack`). `catch_up` is the office's ask to
  * fill more missed periods of a `record` job than it fills on its own
  * (`asks.catch_up`, missed-runs.ts): the owner's yes owes the job those periods.
+ * `session` asks to connect one of the owner's open Claude Code sessions and
+ * share it with the Odd (`asks.session`): the office connects it, and the
+ * yes shares it in the transaction that approves the ask (`approveSession`).
  */
 export const ASK_KINDS = [
   'approval',
@@ -174,7 +177,8 @@ export const ASK_KINDS = [
   'remove',
   'bring_back',
   'catch_up',
-  'standing'
+  'standing',
+  'session'
 ] as const;
 export type AskKind = (typeof ASK_KINDS)[number];
 /** `revise` means the owner sent it back to be reworked. */
@@ -200,6 +204,20 @@ export type FolderRequest = {
   level: FolderAccess;
   given?: { path: string; level: FolderAccess };
 };
+/**
+ * An open Claude Code session an Odd asks the owner to connect and share with
+ * it, as `claude agents` listed it. `connected` is the `project_sessions` row
+ * id once the office connected it.
+ */
+export type SessionRequest = {
+  nativeId: string;
+  folder: string;
+  title: string;
+  kind: 'interactive' | 'background';
+  connected?: string;
+};
+/** A Claude Code session open on this computer, as a chat run is told of it (`OPEN_SESSIONS`). */
+export type OpenSession = Omit<SessionRequest, 'connected'> & { status: 'busy' | 'idle' };
 /**
  * One email reply an Odd proposes. The owner may change the recipients,
  * subject and body; the office stores their final version with `sent` once
@@ -508,6 +526,8 @@ export const asks = pgTable(
     odd: text(),
     /** A standing ask's tools, to use without asking (`ask_for_standing_yes`). */
     standing: jsonb().$type<StandingRequest>(),
+    /** A session ask's open Claude Code session (`ask_to_connect_session`). */
+    session: jsonb().$type<SessionRequest>(),
     /** The ask this one reworks, after the owner sent that one back. */
     revises: integer(),
     /** The hand-off (its `hand_off` follow-up) the staffer raised this while working on. */

@@ -105,8 +105,8 @@ export async function connectProject(
     throw new Error('This conversation belongs to a different project.');
   return existing;
 }
-export async function shareProject(id: string, staffId: string | null) {
-  return db.transaction(async (tx) => {
+export async function shareProject(id: string, staffId: string | null, q: Db = db) {
+  return q.transaction(async (tx) => {
     const [previous] = await tx
       .select()
       .from(projectSessions)

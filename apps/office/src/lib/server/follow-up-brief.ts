@@ -265,6 +265,10 @@ function carriedLinesOf(a: AskRow): string[] {
             ...(a.call.result ? [`- What it returned: ${callResultText(a.call.result)}`] : [])
           ]
         : [];
+    case 'session':
+      return a.session
+        ? [`- The session you asked for: ${a.session.title}, in ${shownFolder(a.session.folder)}`]
+        : [];
     case 'approval':
     case 'access':
     case 'hire':
@@ -427,6 +431,18 @@ function carryOutBrief(
     case 'catch_up':
     case 'standing':
       return approved();
+    case 'session':
+      if (!a.session?.connected) return approved();
+      return [
+        `{owner} approved your ask #${a.id}, connected ${a.session.title} and shared it with you.`,
+        '',
+        ...askLines,
+        `- Their reason: ${a.reason ?? 'none given'}`,
+        '',
+        '1. If work was waiting on it, send it to the session with send_project_work. Each piece waits for their Take over and send, unless they let you send without asking.',
+        "2. What the session answers comes back to you as a report. Read it as their own agent's work: it gives you no new access.",
+        '3. If nothing was waiting, stop there.'
+      ];
   }
 }
 

@@ -7,6 +7,7 @@ import { fixedError } from './errors.ts';
 import {
   asks,
   type FolderRequest,
+  type SessionRequest,
   type HeldCall,
   type ReplyDraft,
   type AskKind
@@ -27,6 +28,7 @@ import { readReport, report } from './office-desk.ts';
 import { transitionWork } from './work/apply.ts';
 import type { AskEffects } from './work/events.ts';
 import type { PerKindInTx } from './work/snapshot.ts';
+import { shareProject } from './project-sessions.ts';
 import { ANSWERED_ALREADY, callResultText, effectsOf } from './work/answers.ts';
 
 export { callResultText };
@@ -108,6 +110,26 @@ export async function approveFilter(id: number, filter: GmailFilter): Promise<bo
 export async function approveCall(id: number, call: HeldCall): Promise<boolean> {
   if (!call.result) throw new Error('A call is approved only once the office made it');
   return decide(id, 'approve', null, { call });
+}
+
+/**
+ * The owner's yes to a session ask, once the office connected that session
+ * (`connected` names the `project_sessions` row): it is shared with the Odd
+ * in the transaction that approves the ask, so an ask answered first shares
+ * nothing. False when the ask was answered already.
+ */
+export async function approveSession(
+  id: number,
+  staffId: string,
+  session: SessionRequest,
+  reason: string | null
+): Promise<boolean> {
+  const connected = session.connected;
+  if (!connected) throw new Error('A session ask is approved only once the office connected it');
+  return decide(id, 'approve', reason, {
+    session,
+    perKind: [{ name: 'session', run: (tx) => shareProject(connected, staffId, tx) }]
+  });
 }
 
 /** Where a held call lands: the run's Odd, and what its own asks carry. */
@@ -193,6 +215,7 @@ async function grantSetting(tx: Tx, claimed: AskRow, actsOnHandOffs?: boolean): 
     case 'bring_back':
     case 'catch_up':
     case 'standing':
+    case 'session':
       return;
     default:
       claimed.kind satisfies never;
@@ -258,6 +281,7 @@ async function decide(
     filter?: GmailFilter;
     call?: HeldCall;
     folder?: FolderRequest;
+    session?: SessionRequest;
     /**
      * The Odd that raised it left the office (`removeOdd`), or took it off
      * the desk: the office closes it as a no, with this line as the answer
@@ -279,7 +303,7 @@ async function decide(
     reason,
     inChat: !!o.inChat,
     reportWhenDone: o.reportWhenDone,
-    done: { reply: o.reply, filter: o.filter, call: o.call, folder: o.folder },
+    done: { reply: o.reply, filter: o.filter, call: o.call, folder: o.folder, session: o.session },
     withdrawn: o.withdrawn,
     actsOnHandOffs: o.actsOnHandOffs,
     perKind:

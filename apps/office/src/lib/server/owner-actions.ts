@@ -95,6 +95,7 @@ export const OWNER_ACTIONS = {
   'POST /api/asks/[id]/call': { records: 'decision' },
   'POST /api/asks/[id]/filter': { records: 'decision' },
   'POST /api/asks/[id]/folder': { records: 'decision' },
+  'POST /api/asks/[id]/session': { records: 'decision' },
   'POST /api/asks/[id]/reply': { records: 'decision' },
   'POST /api/backup': {
     notAnAction:

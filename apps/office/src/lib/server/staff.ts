@@ -135,6 +135,7 @@ import {
   workTitle
 } from '@oddboro/ledger';
 import { flat } from '@oddboro/ledger/desk-answers';
+import { openSessionsFor } from './project-sessions/claude-project.ts';
 import { currentSystem } from '@oddboro/ledger/platform';
 import { computerWord } from '@oddboro/ledger/system-words';
 import { spawn } from 'node:child_process';
@@ -856,6 +857,8 @@ export async function run(who: StaffRow, message: string, opts: RunOpts): Promis
  * tool: no run falls back to another.
  */
 async function runTool(who: StaffRow, message: string, opts: RunOpts): Promise<Run> {
+  // Started now, so listing the owner's sessions runs beside the rest of getting ready.
+  const sessionsListed = openSessionsFor(opts);
   if (opts.signal?.aborted) return stopped();
   const clock = opts.clock ?? {
     deadline: Date.now() + opts.timeoutMs,
@@ -985,6 +988,8 @@ async function runTool(who: StaffRow, message: string, opts: RunOpts): Promise<R
       key,
       ownerSaid: opts.ownerSaid,
       update: opts.ownerSaid ? await updateForChat() : undefined,
+      // Read once as a chat starts, so an Odd can find a session to ask for.
+      openSessions: await sessionsListed,
       chatExchange: opts.chatBefore && lastExchange(opts.chatBefore, { owner, odd: who.name }),
       ownerFiles: opts.ownerFiles?.map((f) => ({
         tag: f.tag,

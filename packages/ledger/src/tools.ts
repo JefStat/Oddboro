@@ -15,6 +15,8 @@ export type OfficeTool = {
   withGmail?: boolean;
   /** Offered only when the owner shared a native conversation with this Odd. */
   withProject?: boolean;
+  /** Offered only while the owner keeps Advanced mode on, outside a lesson-only run. */
+  withAdvanced?: boolean;
   /** Offered only while the Odd holds a service at Read and write, even by `always`. */
   withWrite?: boolean;
   /** Offered only while the owner attached a skill to the Odd, even by `always`. */
@@ -45,6 +47,22 @@ const TOOLS = [
     does: 'Proposes an assignment to a shared native conversation. It waits for your yes, unless you let this Odd send to that session without asking.',
     always: true,
     withProject: true
+  },
+  {
+    id: 'find_open_sessions',
+    name: 'Find your sessions',
+    does: "Lists the Claude Code sessions open on this computer: each one's title, folder and whether it is busy.",
+    always: true,
+    withAdvanced: true,
+    inChat: true
+  },
+  {
+    id: 'ask_to_connect_session',
+    name: 'Ask for a session',
+    does: 'Asks you to connect one of your open Claude Code sessions and share it with this Odd.',
+    always: true,
+    withAdvanced: true,
+    inChat: true
   },
   { id: 'raise_ask', name: 'Ask you', does: 'Puts an ask on your desk.', always: true },
   { id: 'my_asks', name: 'Its asks', does: 'Sees how you decided its asks.', always: true },
@@ -341,6 +359,8 @@ export type ToolRun = {
   gmail: boolean;
   /** A shared native conversation, outside a lesson-only run. */
   project?: boolean;
+  /** Advanced mode is on, outside a lesson-only run. */
+  advanced?: boolean;
   /** The Odd holds a service at Read and write. */
   write?: boolean;
   /** The owner attached at least one skill to the Odd. */
@@ -354,7 +374,7 @@ export type ToolRun = {
 /**
  * Whether `run` is offered the office tool `id`: its Odd, holding `granted`,
  * has it (`hasTool`), it is a tool the Odd calls (not `prompt`), and each
- * condition the tool's row sets holds (`withGmail`, `withProject`, `withWrite`,
+ * condition the tool's row sets holds (`withGmail`, `withProject`, `withAdvanced`, `withWrite`,
  * `withSkills`, `inChat`, `notToManager`).
  * The tool server registers by it.
  */
@@ -365,6 +385,7 @@ export const isOffered = (granted: readonly string[], id: string, run: ToolRun):
     !row?.prompt &&
     (!row?.withGmail || run.gmail) &&
     (!row?.withProject || run.project === true) &&
+    (!row?.withAdvanced || run.advanced === true) &&
     (!row?.withWrite || run.write === true) &&
     (!row?.withSkills || run.skills === true) &&
     (!row?.inChat || run.chat) &&

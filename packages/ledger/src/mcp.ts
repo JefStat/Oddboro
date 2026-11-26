@@ -9,6 +9,7 @@ import { server } from './mcp-run.ts';
 import './mcp-people.ts';
 import './mcp-updates.ts';
 import './mcp-skills.ts';
+import './mcp-open-sessions.ts';
 
 await server.connect(new StdioServerTransport());
 // The database pool would keep the process alive after Claude Code hangs up.

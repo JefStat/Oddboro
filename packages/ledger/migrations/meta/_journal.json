@@ -302,6 +302,13 @@
       "when": 1795010923998,
       "tag": "0042_owner_items",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1795578354655,
+      "tag": "0043_session_asks",
+      "breakpoints": true
     }
   ]
 }

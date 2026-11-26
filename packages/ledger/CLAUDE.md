@@ -215,7 +215,13 @@ office offers work. `src/project-terminal.ts` opens the native terminal
 through node-pty, an optional dependency loaded on the first open. Migration
 `0027_project_sessions` adds `project_sessions` and `project_requests` with
 their change triggers; `0028_advanced_mode` adds `owner.advanced_at` and
-`project_sessions.sends_unasked`. See `docs/project-sessions.md`.
+`project_sessions.sends_unasked`. In a chat with Advanced mode on, an Odd
+lists the owner's open Claude Code sessions from `OPEN_SESSIONS`, which the
+office reads as the chat starts (`find_open_sessions`, `withAdvanced` in
+`tools.ts`), and raises a `session` ask for one (`ask_to_connect_session`,
+`asks.session`, migration `0043_session_asks`). It takes yes or no only. Only
+the office approves one, with `approveSession`, once it connected the session
+and shared it with that Odd. See `docs/project-sessions.md`.
 
 ## Rules
 

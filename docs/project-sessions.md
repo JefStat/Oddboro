@@ -2,6 +2,20 @@
 
 Project sessions need **Advanced mode**, which is off until you turn it on. While it is off, the office shows no Projects button and no **Project sessions** menu item, gives no Odd the project tools, and refuses every project request.
 
+## How trust works
+
+The office has two kinds of agent. An Odd works inside the office's limits: its level, its grants, the gateway and its sandbox. Your own Claude Code or Codex works as you, with your sign-ins and your tool's own permission settings. The office puts no limit of its own on it.
+
+Trust moves from one to the other only when you act:
+
+1. You turn on Advanced mode. The ledger keeps your yes.
+2. You share one session with one Odd. You can choose **Only me** at any time to take it back.
+3. You send each of that Odd's assignments with **Take over and send**. You can let that one Odd at Act send without asking instead.
+
+What comes back from the session reaches the Odd as your own agent's work. It goes to the Odd's report, and to its next run when the work is on an office thread (`finishProject` in `packages/ledger/src/project-sessions.ts`). The answer gives the Odd no new level, tool, folder or yes. Anything the Odd does next still waits where its own access says.
+
+Your agent may read text from strangers, such as a web page or an issue, and its answer can repeat words meant to steer the Odd. The Odd can be misled by them, but only inside the office's limits. Read what the session did before you approve what the Odd proposes next.
+
 ## Turn on Advanced mode
 
 1. Click **Setup** under the office's name.
@@ -30,6 +44,19 @@ The office opens the Codex or Claude Code installed on this computer. The native
 5. Choose **Open terminal** to use native commands, respond to the provider's prompts and work with files. For an office instruction, open **Details** and enter a project-relative filename under **Project file**. Codex receives supported images as native image inputs. Claude reads the file in the selected project. Keep your usual project permissions. A first visit to a folder can present the provider's normal trust question.
 
 One office terminal view accepts typing at a time. **Take control of terminal** transfers input to another view. Closing Projects detaches the view. **Disconnect** releases the office connection after current work finishes. To pick the work up outside the office, resume the displayed conversation ID from its project folder, or attach to its existing Claude background job. Close the prior writer before a saved-session handover. The office never asks the provider to fork to resolve contention.
+
+## Let an Odd find a session
+
+With Advanced mode on, an Odd can see the Claude Code sessions open on this computer and ask you for one.
+
+1. In the Odd's chat, ask it to find your open sessions. It lists each one's title, folder and whether it is busy. It sees nothing inside one.
+2. The Odd asks to connect the one it needs. The ask appears on the Desk with the session's title and folder.
+3. For a session you have open in a terminal, enter `/bg` in that terminal first. The card says so.
+4. Press **Connect**. The office connects the session and shares it with that Odd. A session is shared with one Odd at a time, so this moves it from any other Odd.
+5. Open the session in Projects and follow the plugin steps under **Details**.
+6. The Odd then sends it work as below. Each assignment still waits for **Take over and send**.
+
+Only Claude Code sessions are listed. The Odd sees the list as it stood when the chat began.
 
 ## Give an Odd work
 

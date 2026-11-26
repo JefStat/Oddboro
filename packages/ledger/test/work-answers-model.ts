@@ -2,7 +2,14 @@
 // raising, giving, answering and ending them do, from the events alone. Pure:
 // no database.
 import type { Decision } from '../src/office-asks.ts';
-import type { AskKind, AskStatus, HeldCall, Outcome, ReplyDraft } from '../src/schema.ts';
+import type {
+  AskKind,
+  AskStatus,
+  HeldCall,
+  Outcome,
+  ReplyDraft,
+  SessionRequest
+} from '../src/schema.ts';
 import type { GmailFilter } from '../src/filter-words.ts';
 import type { AskDone, EventOf, LiveKind, NewAsk, NewTask } from '../src/work/events.ts';
 import { SERVES_NO_THREAD } from '../src/work/kinds.ts';
@@ -58,6 +65,12 @@ const FILTER: GmailFilter = {
   summary: 'Newsletters'
 };
 const CALL: HeldCall = { connector: 'gmail', tool: 'archive', arguments: { id: 'm1' } };
+const SESSION: SessionRequest = {
+  nativeId: '00000000-0000-4000-8000-000000000001',
+  folder: '/tmp/project',
+  title: 'Project work',
+  kind: 'background'
+};
 const AT = T0.toISOString();
 
 /**
@@ -105,6 +118,12 @@ export const RAISE: Record<
     at: ANYWHERE,
     with: () => ({ call: CALL }),
     done: { call: { ...CALL, result: { ok: true, text: 'Archived', at: AT } } }
+  },
+  // Raised only in a chat, which works on no thread or hand-off.
+  session: {
+    at: ['none'],
+    with: () => ({ session: SESSION }),
+    done: { session: { ...SESSION, connected: 'row' } }
   },
   // Its own leaving.
   remove: { at: ANYWHERE, with: (p) => ({ odd: p.staffId }) },
@@ -463,7 +482,8 @@ export const KINDS: Record<
   bring_back: { yes: ['back'], no: NO, sendBack: false },
   // The office's own: a yes owes the job its missed runs, and a no needs nothing.
   catch_up: { yes: [], no: [], sendBack: false, unheard: () => true },
-  standing: { yes: ['back'], no: NO, sendBack: false }
+  standing: { yes: ['back'], no: NO, sendBack: false },
+  session: { yes: ['carryOut'], no: NO, sendBack: false }
 };
 
 /** The kinds whose yes starts its carry-outs with no chat card, even when answered in chat. */

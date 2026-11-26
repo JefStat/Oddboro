@@ -74,7 +74,8 @@ export const TWINS = {
   remove: null,
   bring_back: null,
   catch_up: null,
-  standing: null
+  standing: null,
+  session: null
 } satisfies Record<AskKind, Twin | null>;
 
 /** The kinds of ask that have twins (`TWINS`). */

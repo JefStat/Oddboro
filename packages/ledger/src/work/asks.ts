@@ -109,6 +109,7 @@ export function askRaised(
     officeTools: null,
     odd: null,
     standing: null,
+    session: null,
     revises: null,
     handOffId: null,
     threadId: null,
@@ -151,7 +152,8 @@ function answerRefused(kind: AskKind, decision: Decision, done: AskDone): string
     (kind === 'reply' && !done.reply) ||
     (kind === 'filter' && !done.filter) ||
     (kind === 'call' && !done.call) ||
-    (kind === 'folder' && !done.folder?.given);
+    (kind === 'folder' && !done.folder?.given) ||
+    (kind === 'session' && !done.session?.connected);
   const cell = (OWNER_ANSWERS.ask[kind] as AskAnswer).approve;
   return notDone && 'by' in cell ? cell.by : undefined;
 }

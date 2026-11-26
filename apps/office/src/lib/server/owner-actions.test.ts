@@ -5,11 +5,13 @@
 // (CHANGES, QUIET), or UNDRIVEN says why it cannot be, so no row goes unchecked
 // by default.
 import assert from 'node:assert/strict';
-import { mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { EventEmitter } from 'node:events';
+import { mkdirSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { after, test } from 'node:test';
+import { after, mock, test } from 'node:test';
 import { PATCH_KEY, STAFF_PATCH_KEYS } from '@oddboro/ledger/grantable';
 import { FLOORS, GROUNDS, WALLS, type OfficeSpec } from '@oddboro/world';
 import type { Step } from '@oddboro/ledger';
@@ -28,6 +30,25 @@ import {
 } from './office-under-test.ts';
 import { fakeNewAltitude, PAT } from './fake-new-altitude.ts';
 import { OWNER_ACTIONS, TASK_OPS, type OwnerAction, type Recording } from './owner-actions.ts';
+
+// Claude's process discovery and the native terminal stand in for an
+// installed client, so connecting a session an Odd asked for runs anywhere.
+const claude = await import('./project-sessions/claude-project.ts');
+let running: Awaited<ReturnType<typeof claude.claudeProjects>> = [];
+mock.module('./project-sessions/claude-project.ts', {
+  namedExports: { ...claude, claudeProjects: async () => running }
+});
+mock.module('./project-sessions/terminal.ts', {
+  namedExports: {
+    ProjectTerminal: {
+      open: async () => ({
+        running: true,
+        events: new EventEmitter(),
+        releaseProcess: async () => {}
+      })
+    }
+  }
+});
 
 const ROUTES = fileURLToPath(new URL('../../routes', import.meta.url));
 const ACTIONS = ['POST', 'PUT', 'PATCH', 'DELETE'];
@@ -297,6 +318,22 @@ const TRY: Record<Recording, (send: Send) => Promise<void>> = {
       send({ params: { id: String(id) }, body: { criteria, action, tidy: false } })
     );
   },
+  // Advanced mode on before the call, whose own ledger line falls outside it.
+  'POST /api/asks/[id]/session': (send) =>
+    ownerHome(async (home) => {
+      await L.setOwnerName(await L.ownerName());
+      await L.setAdvancedMode(true);
+      const project = join(home, 'app');
+      mkdirSync(project);
+      const nativeId = randomUUID();
+      running = [{ id: nativeId, title: 'App', updated: Date.now(), live: true, job: 'job-1' }];
+      const id = await asked({
+        kind: 'session',
+        session: { nativeId, folder: realpathSync(project), title: 'App', kind: 'background' }
+      });
+      await send({ params: { id: String(id) } });
+      await L.setAdvancedMode(false);
+    }),
   'POST /api/asks/[id]/folder': (send) =>
     ownerHome(async (home) => {
       const path = join(home, 'asked-for');
