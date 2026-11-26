@@ -9,11 +9,16 @@ import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mock, test } from 'node:test';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import {
   CLAUDE_LIST_FAILED,
+  MOVE_FAILED,
   claudeProjects,
+  endSession,
   openClaudeSessions,
-  openSessionsFor
+  openSessionsFor,
+  untilIdle
 } from './claude-project.ts';
 
 /** The office's words for each system it runs on, written out. */
@@ -231,5 +236,60 @@ test('only a chat that reads no lesson, with Advanced mode on, is told of open s
   } finally {
     process.env.PATH = was;
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a session in a terminal is closed with SIGTERM, and one gone already counts as closed', async () => {
+  const there = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)']);
+  const ended = once(there, 'exit');
+
+  await endSession({ job: '', pid: there.pid });
+
+  const [, signal] = await ended;
+  assert.equal(signal, 'SIGTERM');
+  await endSession({ job: '', pid: there.pid });
+  await assert.rejects(endSession({ job: '' }), { message: MOVE_FAILED.stop });
+});
+
+test(
+  'a background job is closed with claude stop, and a stop that fails says so in plain words',
+  { skip: process.platform === 'win32' && 'the stand-in is a shell script' },
+  async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'office-claude-stop-')));
+    const was = process.env.PATH;
+    try {
+      writeFileSync(join(root, 'claude'), `#!/bin/sh\necho "$@" > "${join(root, 'args')}"\n`);
+      chmodSync(join(root, 'claude'), 0o755);
+      process.env.PATH = root;
+      await endSession({ job: 'job-7' });
+      assert.equal(readFileSync(join(root, 'args'), 'utf8').trim(), 'stop job-7');
+
+      writeFileSync(join(root, 'claude'), '#!/bin/sh\nexit 1\n');
+      await assert.rejects(endSession({ job: 'job-7' }), { message: MOVE_FAILED.stop });
+    } finally {
+      process.env.PATH = was;
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+);
+
+test('an idle session needs no wait, and a busy one with no transcript to watch says it cannot wait', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const row = { id, title: 'A', updated: 0, live: true, job: '' };
+  const home = await realpath(await mkdtemp(join(tmpdir(), 'office-claude-idle-')));
+  const was = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = home;
+  try {
+    await untilIdle('/work', id, async () => [{ ...row, busy: false }]);
+    await assert.rejects(
+      untilIdle('/work', id, async () => [{ ...row, busy: true }]),
+      {
+        message: MOVE_FAILED.noTranscript
+      }
+    );
+  } finally {
+    if (was === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+    else process.env.CLAUDE_CONFIG_DIR = was;
+    await rm(home, { recursive: true, force: true });
   }
 });

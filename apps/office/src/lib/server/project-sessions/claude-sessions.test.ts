@@ -6,7 +6,7 @@ import { mkdtemp, mkdir, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { claudeHome, continuedAs, savedClaudeSessions } from './claude-sessions.ts';
+import { claudeHome, continuedAs, savedClaudeSessions, transcriptOf } from './claude-sessions.ts';
 
 const lines = (...rows: unknown[]) => rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
 const user = (content: unknown, extra: object = {}) => ({
@@ -153,6 +153,21 @@ test('a continued-in record that names no session, or names a loop, ends the sea
     const found = await continuedAs(a, home);
     assert.ok(found === a || found === b, found);
     assert.equal(await continuedAs(odd, home), odd);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("a session's transcript is found in whichever project folder it began in, and none is undefined", async () => {
+  const home = await mkdtemp(join(tmpdir(), 'office-claude-'));
+  try {
+    const dir = join(home, 'projects', '-work-began-here');
+    await mkdir(dir, { recursive: true });
+    const [kept, none] = [randomUUID(), randomUUID()];
+    await writeFile(join(dir, kept + '.jsonl'), lines(user('Hi')));
+
+    assert.equal(await transcriptOf(kept, home), join(dir, kept + '.jsonl'));
+    assert.equal(await transcriptOf(none, home), undefined);
   } finally {
     await rm(home, { recursive: true, force: true });
   }

@@ -1,10 +1,46 @@
 // Terminal bytes go only to the owner's session view. A tab closing detaches
 // its listener; the native client stays up. Reopening replays a bounded screen history.
 import { EventEmitter, once } from 'node:events';
+import { userInfo } from 'node:os';
+import { basename } from 'node:path';
 import { openProjectTerminal } from '@oddboro/ledger/project-terminal';
+import { currentSystem, type System } from '@oddboro/ledger/platform';
 import { nativeCommand, nativeEnv } from './native.ts';
 
 type Pty = Awaited<ReturnType<typeof openProjectTerminal>>;
+
+/** The owner's own shell, from their account, or none where it has none (Windows). */
+const ownShell = (): string | undefined => {
+  try {
+    return userInfo().shell ?? undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/** Where the native client starts through the owner's login shell: not Windows, whose shell has no login startup files. */
+const LOGIN_SHELL: Record<System, boolean> = { mac: true, linux: true, windows: false };
+
+/**
+ * The command that runs the native client through the owner's login shell, so
+ * it gets what their own startup files set up, as a new terminal tab does,
+ * on top of the office's filtered environment. The client's own arguments
+ * pass as arguments, never inside the script, so nothing needs quoting.
+ * Windows, and a shell the office does not know, run the client directly.
+ */
+export function throughLoginShell(
+  exe: string,
+  args: string[],
+  shell = ownShell(),
+  system = currentSystem()
+): [string, string[]] {
+  if (!system || !LOGIN_SHELL[system] || !shell) return [exe, args];
+  const name = basename(shell);
+  if (name === 'fish') return [shell, ['-l', '-i', '-c', 'exec $argv', exe, ...args]];
+  if (['zsh', 'bash', 'sh', 'ksh', 'dash'].includes(name))
+    return [shell, ['-l', '-i', '-c', 'exec "$0" "$@"', exe, ...args]];
+  return [exe, args];
+}
 
 export class ProjectTerminal {
   readonly events = new EventEmitter();
@@ -46,9 +82,10 @@ export class ProjectTerminal {
     cwd: string,
     extra: Record<string, string> = {}
   ) {
-    const [exe, prefix] = nativeCommand(agent);
+    const [client, prefix] = nativeCommand(agent);
+    const [exe, argv] = throughLoginShell(client, [...prefix, ...args]);
     return new ProjectTerminal(
-      await openProjectTerminal(exe, [...prefix, ...args], {
+      await openProjectTerminal(exe, argv, {
         cwd,
         env: { ...nativeEnv(), ...extra, TERM: 'xterm-256color' },
         cols: 100,

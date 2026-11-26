@@ -40,7 +40,7 @@ The office opens the Codex or Claude Code installed on this computer. The native
 1. Click **+ New session** at the top of the list. Choose the project folder and coding tool. Select **Start new** to open a fresh conversation.
 2. To continue earlier work, choose **Find existing** and select the conversation by title, activity time and ID.
 3. For Codex work still running on a separate App Server, enter its private Unix socket under **Connect to a running Codex server** before searching. Use the socket the original client connected to. The socket's parent directory must be private to your account. For example, a server launched with `codex app-server --listen unix:///path/to/private/codex.sock` and a terminal launched with `codex --remote unix:///path/to/private/codex.sock` share that server. The office can join a turn in progress there. On a client that keeps its server private, finish or interrupt the turn and **close the original client**. Select **Hand over this conversation** in Projects. The office resumes its saved ID.
-4. For a running Claude Code terminal, enter `/bg` in the original session. Choose **Find existing** again, then select its running entry. The office attaches to the background job. To give this existing session office assignments, follow the plugin commands under **Details**. A fresh session or saved conversation launched by the office loads the plugin for that launch.
+4. For a Claude Code session running in a terminal or as a background job, choose **Find existing**, then select its running entry. You type nothing in that terminal. Once any turn in progress ends, the office closes Claude there and continues the same conversation, under the same ID, in its own terminal in Projects, with its plugin loaded. A session already connected while it ran elsewhere shows **Move into Oddboro** under **Details**, which does the same.
 5. Choose **Open terminal** to use native commands, respond to the provider's prompts and work with files. For an office instruction, open **Details** and enter a project-relative filename under **Project file**. Codex receives supported images as native image inputs. Claude reads the file in the selected project. Keep your usual project permissions. A first visit to a folder can present the provider's normal trust question.
 
 One office terminal view accepts typing at a time. **Take control of terminal** transfers input to another view. Closing Projects detaches the view. **Disconnect** releases the office connection after current work finishes. To pick the work up outside the office, resume the displayed conversation ID from its project folder, or attach to its existing Claude background job. Close the prior writer before a saved-session handover. The office never asks the provider to fork to resolve contention.
@@ -51,12 +51,15 @@ With Advanced mode on, an Odd can see the Claude Code sessions open on this comp
 
 1. In the Odd's chat, ask it to find your open sessions. It lists each one's title, folder and whether it is busy. It sees nothing inside one.
 2. The Odd asks to connect the one it needs. The ask appears on the Desk with the session's title and folder.
-3. For a session you have open in a terminal, enter `/bg` in that terminal first. The card says so.
-4. Press **Connect**. The office connects the session and shares it with that Odd. A session is shared with one Odd at a time, so this moves it from any other Odd.
-5. Open the session in Projects and follow the plugin steps under **Details**.
-6. The Odd then sends it work as below. Each assignment still waits for **Take over and send**.
+3. Press **Connect**. The office connects the session and shares it with that Odd. A session is shared with one Odd at a time, so this moves it from any other Odd.
+4. Once any turn in progress ends, the office closes Claude where it runs and continues the conversation in Projects, as in step 4 above. You type nothing in your terminal.
+5. The Odd then sends it work as below. Each assignment still waits for **Take over and send**.
 
 Only Claude Code sessions are listed. The Odd sees the list as it stood when the chat began.
+
+### What a moved session keeps
+
+The office runs Claude through your own login shell (fish, zsh or bash), in the project's folder, so it gets what your shell's startup files set, as a new terminal tab does. On Windows it runs Claude directly. It keeps your Claude settings, CLAUDE.md files, hooks, skills, MCP servers and plugins, and your logins kept in files or the Keychain. It loses what only that terminal had: a variable you set by hand there, and anything it was still running, such as a dev server. A hook that loads a folder's variables when the prompt draws, such as direnv's, may not run, since the office's shell shows no prompt. If the office restarts, its terminal closes. The conversation stays, and the office resumes it the next time work goes to it.
 
 ## Give an Odd work
 
@@ -72,9 +75,9 @@ During a Codex turn, **Send correction** steers that turn. **Stop** targets the 
 
 Before sending to Claude, the office checks that both parts of its paired
 plugin answer a fresh probe. If either is missing, the assignment fails
-without being sent. Under **Details**, connect the plugin in that conversation
-and reload it, then choose **Retry** on the saved assignment. An installed
-older plugin may need an update through `/plugin` first.
+without being sent. If **Details** shows **Move into Oddboro**, the session
+still runs outside the office: press it, then choose **Retry** on the saved
+assignment.
 
 An offered assignment that Claude has not taken within a minute becomes
 uncertain. The office does not resend it. A late answer can still finish it.

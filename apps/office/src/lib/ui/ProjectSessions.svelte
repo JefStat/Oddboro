@@ -26,6 +26,7 @@
     note: string;
     reply: string;
     market?: string;
+    movable?: boolean;
     account?: string;
     question?: {
       key: string;
@@ -749,21 +750,20 @@
                   </div>{/if}
               {/if}
 
-              {#if selected.agent === 'claude' && view?.market}
-                <details>
-                  <summary class="cursor-pointer text-xs text-muted">
-                    Connect an existing Claude terminal to office assignments
-                  </summary>
-                  <p class="text-xs">
-                    In that conversation, add the local marketplace, install its plugin, then reload
-                    plugins. If it is already installed, update it with /plugin before reloading.
-                    New sessions opened here load it at launch.
+              {#if selected.agent === 'claude' && view?.movable}
+                <!-- Claude runs it outside the office, with no plugin: the office brings it in, no /plugin steps. -->
+                <div class="flex flex-col gap-2 rounded-lg bg-raise p-2 text-xs">
+                  <p>
+                    This conversation runs outside Oddboro, so work can't reach it. Move into
+                    Oddboro closes it where it runs, once any turn in progress ends, and continues
+                    the same conversation here, with your own shell's settings.
                   </p>
-                  <pre
-                    class="whitespace-pre-wrap break-all">/plugin marketplace add {JSON.stringify(
-                      view.market
-                    )} --scope local{'\n'}/plugin install oddboro-project-{selected.id}@oddboro-{selected.id} --scope local{'\n'}/reload-plugins</pre>
-                </details>
+                  <button
+                    class="btn self-start"
+                    disabled={busy}
+                    onclick={() => run(() => action('move'))}>Move into Oddboro</button
+                  >
+                </div>
               {/if}
 
               {#if work.length}

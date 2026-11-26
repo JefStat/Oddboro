@@ -165,13 +165,11 @@ const MOVES_MAX = 20;
  * project folder is looked in. With no such record, the session is its own.
  */
 export async function continuedAs(sessionId: string, home = claudeHome()): Promise<string> {
-  const projects = join(home, 'projects');
-  const dirs = await readdir(projects).catch(() => [] as string[]);
   const seen = new Set<string>();
   let id = sessionId;
   for (let moves = 0; moves < MOVES_MAX && !seen.has(id); moves++) {
     seen.add(id);
-    const file = await firstFile(dirs.map((dir) => join(projects, dir, id + '.jsonl')));
+    const file = await transcriptOf(id, home);
     if (!file) return id;
     const info = await stat(file);
     const { tail } = await ends(file, info.size);
@@ -180,6 +178,19 @@ export async function continuedAs(sessionId: string, home = claudeHome()): Promi
     id = next;
   }
   return id;
+}
+
+/**
+ * Where Claude Code keeps a session's transcript, in whichever project folder
+ * it began in, or undefined when it has none yet.
+ */
+export async function transcriptOf(
+  sessionId: string,
+  home = claudeHome()
+): Promise<string | undefined> {
+  const projects = join(home, 'projects');
+  const dirs = await readdir(projects).catch(() => [] as string[]);
+  return firstFile(dirs.map((dir) => join(projects, dir, sessionId + '.jsonl')));
 }
 
 /** The first of `paths` that is a file, or undefined. */

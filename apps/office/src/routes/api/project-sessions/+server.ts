@@ -58,7 +58,8 @@ const command = z.discriminatedUnion('action', [
     pick: z.enum(['accept', 'decline']),
     answers: z.record(z.string(), z.array(z.string())).optional()
   }),
-  z.object({ action: z.literal('disconnect'), id })
+  z.object({ action: z.literal('disconnect'), id }),
+  z.object({ action: z.literal('move'), id })
 ]);
 export const POST: RequestHandler = async ({ request }) => {
   if (!(await advancedMode())) error(403, ADVANCED_OFF);
@@ -135,6 +136,10 @@ export const POST: RequestHandler = async ({ request }) => {
         break;
       case 'answer':
         await c.answer(a.id, a.request, a.key, a.pick, a.answers);
+        break;
+      case 'move':
+        // The move waits for a busy turn to end, so it runs on and says how it goes in the view.
+        c.moveIn(a.id);
         break;
       case 'disconnect':
         await c.disconnect(a.id);

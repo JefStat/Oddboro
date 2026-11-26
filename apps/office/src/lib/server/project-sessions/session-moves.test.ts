@@ -3,9 +3,18 @@
 // session, so work never goes to the conversation as it stood before. Only
 // Claude's process discovery and the native terminal stand in for a client.
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { EventEmitter } from 'node:events';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { EventEmitter, once } from 'node:events';
+import {
+  appendFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mock, test } from 'node:test';
@@ -65,4 +74,61 @@ test('a conversation moved with /bg opens as the session it runs in now, with th
   assert.equal(now?.staffId, 'paige');
   const { plugin } = claude.prepareClaude(now!);
   assert.match(readFileSync(join(plugin, '.mcp.json'), 'utf8'), new RegExp(after));
+});
+
+async function until(fn: () => boolean, said = () => '') {
+  const end = performance.now() + 5000;
+  while (performance.now() < end) {
+    if (fn()) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.fail(`Not reached: ${said()}`);
+}
+
+test('a busy session moves in once its turn ends, and work that comes meanwhile waits, then resumes it here with its plugin under the same ID', async (t) => {
+  await L.setOwnerName('Tester');
+  await L.setAdvancedMode(true);
+  const home = mkdtempSync(join(tmpdir(), 'office-claude-'));
+  const was = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = home;
+  t.after(() => {
+    if (was === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+    else process.env.CLAUDE_CONFIG_DIR = was;
+    rmSync(home, { recursive: true, force: true });
+  });
+  const project = realpathSync(mkdtempSync(join(folder, 'busy-')));
+  const id = randomUUID();
+  // Its transcript sits under another project folder, as one that began elsewhere does.
+  mkdirSync(join(home, 'projects', '-began-elsewhere'), { recursive: true });
+  const transcript = join(home, 'projects', '-began-elsewhere', id + '.jsonl');
+  writeFileSync(transcript, JSON.stringify({ type: 'user', sessionId: id }) + '\n');
+  // A process stands in for Claude in the owner's terminal, mid-turn.
+  const there = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)']);
+  t.after(() => there.kill('SIGKILL'));
+  const ended = once(there, 'exit');
+  there.once('exit', () => (running = []));
+  const row = { id, title: 'Busy', updated: Date.now(), live: true, job: '', pid: there.pid };
+  running = [{ ...row, busy: true }];
+  const c = projectController();
+
+  const s = await c.connect('claude', project, id);
+  t.after(() => c.disconnect(s.id));
+  await until(
+    () => c.view(s.id).note === 'Waiting for the session to finish its turn',
+    () => c.view(s.id).note
+  );
+  const opening = c.terminal(s.id);
+  const before = opened.length;
+  // The turn ends: Claude writes to the transcript, and lists the session idle.
+  running = [{ ...row, busy: false }];
+  appendFileSync(transcript, JSON.stringify({ type: 'assistant', sessionId: id }) + '\n');
+  await opening;
+
+  const [, signal] = await ended;
+  assert.equal(signal, 'SIGTERM');
+  assert.equal(opened.length, before + 1);
+  const args = opened.at(-1)!;
+  assert.ok(args.includes('--plugin-dir'), args.join(' '));
+  assert.deepEqual(args.slice(-2), ['--resume', id]);
+  assert.equal(c.view(s.id).movable, false);
 });

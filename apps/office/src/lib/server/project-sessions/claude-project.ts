@@ -25,8 +25,9 @@ import { AGENT_NAMES } from '@oddboro/ledger/agents';
 import { currentSystem, probe } from '@oddboro/ledger/platform';
 import { computerWord } from '@oddboro/ledger/system-words';
 import { nativeCommand, nativeEnv, UUID } from './native.ts';
-import { savedClaudeSessions } from './claude-sessions.ts';
+import { savedClaudeSessions, transcriptOf } from './claude-sessions.ts';
 type Active = {
+  pid?: number;
   sessionId?: string;
   id?: string;
   kind: string;
@@ -153,13 +154,24 @@ export async function openSessionsFor(
   return openClaudeSessions();
 }
 
-export async function claudeProjects(folder: string) {
+/** One of a project's Claude conversations, saved or running, as Find existing lists it. */
+export type ClaudeRow = {
+  id: string;
+  title: string;
+  updated: number;
+  live: boolean;
+  /** The background job, when one runs it. */
+  job: string;
+  busy?: boolean;
+  pid?: number;
+};
+export async function claudeProjects(folder: string): Promise<ClaudeRow[]> {
   const [history, processes] = await Promise.all([
     savedClaudeSessions(folder),
     claudeAgents(folder)
   ]);
   const active = processes.filter((a) => a.cwd === folder && a.sessionId);
-  const rows = new Map(
+  const rows = new Map<string, ClaudeRow>(
     history
       .filter((h) => !h.cwd || h.cwd === folder)
       .map((h) => [
@@ -179,9 +191,113 @@ export async function claudeProjects(folder: string) {
       title: a.name || rows.get(a.sessionId!)?.title || 'Claude Code',
       updated: rows.get(a.sessionId!)?.updated || Date.now(),
       live: true,
-      job: a.id || ''
+      job: a.id || '',
+      busy: a.status === 'busy',
+      pid: typeof a.pid === 'number' ? a.pid : undefined
     });
   return [...rows.values()].sort((a, b) => b.updated - a.updated);
+}
+
+/** What the owner reads when the office cannot move a session in. */
+export const MOVE_FAILED = {
+  stop: 'The office could not close that session where it runs. Close it there, then press Move into Oddboro.',
+  slow: 'That session did not close in time. Close it where it runs, then press Move into Oddboro.',
+  busy: 'The session stayed busy. Press Move into Oddboro to try again.',
+  noTranscript:
+    'The office cannot see that session working, so it cannot wait for it. Wait until it is idle, then press Move into Oddboro.'
+};
+
+/** How long a closing session has to leave `claude agents`, and how often the office looks. */
+const GONE_WITHIN_MS = 10_000;
+const GONE_LOOK_MS = 250;
+/** How long the office waits for a busy turn to end before it gives up. */
+const IDLE_WITHIN_MS = 30 * 60_000;
+
+/**
+ * Close a session where it runs, keeping its conversation: `claude stop` for a
+ * background job, or SIGTERM for one in a terminal, which Claude Code ends on
+ * cleanly with its transcript whole.
+ */
+export async function endSession(row: Pick<ClaudeRow, 'job' | 'pid'>): Promise<void> {
+  if (row.job) {
+    const [exe, prefix] = nativeCommand('claude');
+    const r = await probe(exe, [...prefix, 'stop', row.job], { env: nativeEnv(), timeout: 10000 });
+    if (r.status !== 'ok') throw new Error(MOVE_FAILED.stop);
+    return;
+  }
+  if (row.pid === undefined) throw new Error(MOVE_FAILED.stop);
+  try {
+    process.kill(row.pid, 'SIGTERM');
+  } catch (e: unknown) {
+    // Gone already is what the office wanted.
+    if ((e as NodeJS.ErrnoException).code !== 'ESRCH') throw new Error(MOVE_FAILED.stop);
+  }
+}
+
+/** Wait, a bounded time, until `claude agents` no longer lists the session as running. */
+export async function untilGone(
+  folder: string,
+  sessionId: string,
+  list: (folder: string) => Promise<ClaudeRow[]> = claudeProjects
+): Promise<void> {
+  const end = Date.now() + GONE_WITHIN_MS;
+  for (;;) {
+    const row = (await list(folder)).find((r) => r.id === sessionId && r.live);
+    if (!row) return;
+    if (Date.now() >= end) throw new Error(MOVE_FAILED.slow);
+    await new Promise((resolve) => setTimeout(resolve, GONE_LOOK_MS));
+  }
+}
+
+/**
+ * Wait until the session is idle, looking again only when its transcript
+ * changes, since a turn writes there, and never past `IDLE_WITHIN_MS`.
+ */
+export async function untilIdle(
+  folder: string,
+  sessionId: string,
+  list: (folder: string) => Promise<ClaudeRow[]> = claudeProjects,
+  signal?: AbortSignal
+): Promise<void> {
+  const busy = async () => (await list(folder)).some((r) => r.id === sessionId && r.live && r.busy);
+  if (!(await busy())) return;
+  const file = await transcriptOf(sessionId);
+  if (!file) throw new Error(MOVE_FAILED.noTranscript);
+  await new Promise<void>((resolve, reject) => {
+    let looking = false;
+    // A change while the office looks gets one more look, so the turn's last write is never missed.
+    let again = false;
+    let finished = false;
+    const done = (e?: Error) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(limit);
+      watcher.close();
+      signal?.removeEventListener('abort', aborted);
+      if (e) reject(e);
+      else resolve();
+    };
+    const aborted = () => done(new Error(MOVE_FAILED.busy));
+    const limit = setTimeout(() => done(new Error(MOVE_FAILED.busy)), IDLE_WITHIN_MS);
+    const look = () => {
+      if (finished) return;
+      if (looking) {
+        again = true;
+        return;
+      }
+      looking = true;
+      again = false;
+      busy()
+        .then((still) => (still ? undefined : done()))
+        .catch((e: unknown) => done(e instanceof Error ? e : new Error(String(e))))
+        .finally(() => {
+          looking = false;
+          if (again) look();
+        });
+    };
+    const watcher = watch(file, look);
+    signal?.addEventListener('abort', aborted, { once: true });
+  });
 }
 const jsonFile = (p: string, data: unknown) => {
   const tmp = p + '.' + randomUUID() + '.tmp';

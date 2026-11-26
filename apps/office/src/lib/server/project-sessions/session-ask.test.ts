@@ -2,8 +2,9 @@
 // the real route and database. Only Claude's process discovery and the native
 // terminal stand in for an installed client.
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { EventEmitter } from 'node:events';
+import { EventEmitter, once } from 'node:events';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -46,6 +47,14 @@ async function sessionAsk(project: string, nativeId: string, kind: 'interactive'
   });
   return ask.id;
 }
+async function until(fn: () => boolean, said = () => '') {
+  const end = performance.now() + 5000;
+  while (performance.now() < end) {
+    if (fn()) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.fail(`The move did not finish: ${said()}`);
+}
 const answer = (id: number, body: unknown = {}) =>
   request(`/api/asks/[id]/session`, 'POST', { params: { id: String(id) }, body });
 
@@ -69,19 +78,35 @@ test("the owner's yes connects a background session, shares it with the Odd and 
   assert.equal((await L.connection(session))?.staffId, 'paige');
 });
 
-test('an interactive session that never ran /bg is refused with the step, and the ask stays open', async () => {
+test('an interactive session in a terminal is connected at once, then closed there and moved in, with no /bg', async (t) => {
+  await L.setOwnerName('Tester');
   await L.setAdvancedMode(true);
   const project = join(folder, 'session-bg');
   mkdirSync(project);
   const nativeId = randomUUID();
-  running = [{ id: nativeId, title: 'App work', updated: Date.now(), live: true, job: '' }];
+  // A process stands in for Claude in the owner's terminal: the move ends it with SIGTERM.
+  const there = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)']);
+  t.after(() => there.kill('SIGKILL'));
+  const ended = once(there, 'exit');
+  there.once('exit', () => (running = []));
+  running = [
+    { id: nativeId, title: 'App work', updated: Date.now(), live: true, job: '', pid: there.pid }
+  ];
   const id = await sessionAsk(realpathSync(project), nativeId, 'interactive');
 
-  const { status, message } = await refusal(answer(id));
+  const res = await answer(id);
 
-  assert.equal(status, 409);
-  assert.match(message, /\/bg/);
-  assert.equal((await L.ask(id))?.status, 'open');
+  assert.equal(res.status, 200, await res.clone().text());
+  const { session } = (await res.json()) as { session: string };
+  t.after(() => projectController().disconnect(session));
+  assert.equal((await L.ask(id))?.status, 'approved');
+  const [, signal] = await ended;
+  assert.equal(signal, 'SIGTERM');
+  await until(
+    () => projectController().view(session).note === 'Moved. It runs here now.',
+    () => projectController().view(session).note
+  );
+  assert.equal(projectController().view(session).movable, false);
 });
 
 test('the route refuses while Advanced mode is off', async () => {

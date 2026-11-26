@@ -27,10 +27,13 @@ import {
   postClaude,
   clearClaude,
   correctClaude,
-  hearClaude
+  hearClaude,
+  endSession,
+  untilGone,
+  untilIdle
 } from './claude-project.ts';
 import { bus, listen } from '../events.ts';
-import { continuedAs } from './claude-sessions.ts';
+import { continuedAs, transcriptOf } from './claude-sessions.ts';
 
 type Thread = {
   id: string;
@@ -60,6 +63,10 @@ type Runtime = {
   note: string;
   socket?: string;
   market?: string;
+  /** A move into the office under way (`move`), which opening a terminal waits for. */
+  moving?: Promise<void>;
+  /** Claude runs this conversation outside the office, in the owner's terminal or as a background job. */
+  elsewhere?: boolean;
   plugin?: string;
   openingTerminal?: Promise<ProjectTerminal>;
   busy?: Promise<void>;
@@ -77,6 +84,8 @@ type View = {
   note: string;
   reply: string;
   market?: string;
+  /** Running outside the office, so Move into Oddboro can bring it in. */
+  movable: boolean;
 };
 type Listed = { id: string; title: string; updated: number; live: boolean; job?: string };
 /** What every project route answers while Advanced mode is off. */
@@ -120,7 +129,8 @@ export class ProjectController {
       question: c?.questions.values().next().value,
       note: c?.note ?? 'Disconnected',
       account: c?.account,
-      market: c?.market
+      market: c?.market,
+      movable: !!c?.elsewhere && !c?.moving
     };
   }
   /** A session's dot in the Projects list: the stored status, or what its live connection is doing now. */
@@ -232,13 +242,6 @@ export class ProjectController {
         (s) => s.agent === agent && s.folder === folder && s.nativeId === id
       );
       if (!saved && !known) throw new Error('That conversation was not found in this project.');
-      if (
-        agent === 'claude' &&
-        saved?.live &&
-        !saved.job &&
-        !this.sessions.get(known?.id ?? '')?.terminal?.running
-      )
-        throw new Error('In that Claude terminal, enter /bg, then choose Connect again.');
       if (agent === 'codex' && !saved?.live && !handedOver)
         throw new Error(
           'Finish or stop the turn in its original window, then choose Hand over this conversation.'
@@ -257,8 +260,52 @@ export class ProjectController {
       folder,
       (title || 'New ' + (agent === 'codex' ? 'Codex' : 'Claude Code') + ' session').slice(0, 200)
     );
-    await this.attach(s, socket, started);
+    const c = await this.attach(s, socket, started);
+    // A Claude session running outside the office comes in, once any turn in progress ends.
+    if (c.elsewhere && !c.terminal?.running)
+      void this.move(c).catch((e: unknown) => this.warn(c, e));
     return s;
+  }
+  /** Bring a session running outside the office in: the owner's Move into Oddboro. */
+  moveIn(id: string) {
+    const c = this.runtime(id);
+    void this.move(c).catch((e: unknown) => this.warn(c, e));
+  }
+  private move(c: Runtime): Promise<void> {
+    c.moving ??= this.moveNow(c).finally(() => {
+      c.moving = undefined;
+      this.changed(c);
+    });
+    return c.moving;
+  }
+  /**
+   * Close the conversation where it runs, once it is idle, so the office can
+   * resume it in its own terminal with its plugin under the same ID.
+   */
+  private async moveNow(c: Runtime) {
+    if (c.session.agent !== 'claude') return;
+    await this.follow(c);
+    const s = c.session;
+    const running = () =>
+      claudeProjects(s.folder).then((rows) => rows.find((r) => r.id === s.nativeId && r.live));
+    let row = await running();
+    if (!row) {
+      c.elsewhere = false;
+      return;
+    }
+    if (row.busy) {
+      c.note = 'Waiting for the session to finish its turn';
+      this.changed(c);
+      await untilIdle(s.folder, s.nativeId, claudeProjects);
+      row = (await running()) ?? row;
+    }
+    c.note = 'Moving the conversation into Oddboro';
+    this.changed(c);
+    await endSession(row);
+    await untilGone(s.folder, s.nativeId, claudeProjects);
+    c.elsewhere = false;
+    c.note = 'Moved. It runs here now.';
+    this.changed(c);
   }
   private attach(s: ProjectSession, socket?: string, started?: Thread) {
     const existing = this.sessions.get(s.id);
@@ -290,6 +337,10 @@ export class ProjectController {
         const p = prepareClaude(s);
         c.market = p.market;
         c.plugin = p.plugin;
+        c.elsewhere = await claudeProjects(s.folder).then(
+          (rows) => rows.some((r) => r.id === s.nativeId && r.live),
+          () => false
+        );
         c.watch = hearClaude(
           s,
           async (id, answer) => {
@@ -413,6 +464,8 @@ export class ProjectController {
     this.changed(c);
   }
   private async launchTerminal(c: Runtime) {
+    // A move that fails says why through its note; the checks below then refuse as before.
+    if (c.moving) await c.moving.catch(() => undefined);
     await this.follow(c);
     const s = c.session;
     if (s.agent === 'codex') {
@@ -421,16 +474,24 @@ export class ProjectController {
     } else {
       const saved = await claudeProjects(s.folder);
       const row = saved.find((r) => r.id === s.nativeId);
-      if (row?.live && !row.job)
-        throw new Error('In the current Claude terminal enter /bg, then reconnect.');
+      if (row?.live && !row.job) {
+        c.elsewhere = true;
+        throw new Error(
+          'This conversation runs in your terminal. Press Move into Oddboro in Projects.'
+        );
+      }
+      // Its transcript can sit under the folder it began in, so look in every project folder.
+      const resumable = !!row || !!(await transcriptOf(s.nativeId));
       const args = row?.job
         ? ['attach', row.job]
         : [
             '--plugin-dir',
             c.plugin!,
-            ...(row ? ['--resume', s.nativeId] : ['--session-id', s.nativeId])
+            ...(resumable ? ['--resume', s.nativeId] : ['--session-id', s.nativeId])
           ];
       c.terminal = await ProjectTerminal.open('claude', args, s.folder);
+      // Attached to a background job, Claude still runs it outside the office, with no plugin.
+      c.elsewhere = !!row?.job;
     }
     c.terminal.events.on('exit', () => {
       c.note = 'Terminal closed. You can reopen the conversation.';
