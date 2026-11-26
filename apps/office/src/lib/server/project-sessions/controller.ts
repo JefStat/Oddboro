@@ -11,6 +11,7 @@ import {
   finishProject,
   projectConnections,
   activeProjectRequest,
+  moveProject,
   type ProjectSession,
   type ProjectAgent,
   type ProjectRequest,
@@ -29,6 +30,7 @@ import {
   hearClaude
 } from './claude-project.ts';
 import { bus, listen } from '../events.ts';
+import { continuedAs } from './claude-sessions.ts';
 
 type Thread = {
   id: string;
@@ -394,7 +396,24 @@ export class ProjectController {
       c.openingTerminal = undefined;
     }));
   }
+  /**
+   * Claude Code carries a conversation on under a new session ID (/bg does),
+   * so before the office opens one it follows that ID, and writes the plugin
+   * again, since the plugin names the session it answers for.
+   */
+  private async follow(c: Runtime) {
+    if (c.session.agent !== 'claude') return;
+    const now = await continuedAs(c.session.nativeId);
+    if (now === c.session.nativeId) return;
+    c.session = await moveProject(c.session.id, now);
+    const p = prepareClaude(c.session);
+    c.market = p.market;
+    c.plugin = p.plugin;
+    c.note = 'Claude Code carried this conversation on in a new session. The office follows it.';
+    this.changed(c);
+  }
   private async launchTerminal(c: Runtime) {
+    await this.follow(c);
     const s = c.session;
     if (s.agent === 'codex') {
       const start = (await this.codex(c.socket)).terminal(s.nativeId);

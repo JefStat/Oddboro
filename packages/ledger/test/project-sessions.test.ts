@@ -21,7 +21,8 @@ const {
   claimProject,
   finishProject,
   changeProjectRequest,
-  setAdvancedMode
+  setAdvancedMode,
+  moveProject
 } = await import('../src/project-sessions.ts');
 const { setOwnerName } = await import('../src/office.ts');
 await setOwnerName('Tester');
@@ -198,4 +199,20 @@ test('turning advanced mode off revokes every grant, stops waiting work and is a
   const [on] = (await db.select().from(ledger)).slice(before.length + 1);
   assert.equal(on.title, 'Turned on advanced mode');
   assert.match(on.body, /outside Oddboro’s limits/);
+});
+
+test('a session Claude carried on under a new ID keeps its row and its Odd, under that ID', async () => {
+  const odd = (await fixture('draft')).staffId;
+  const s = await connectProject('claude', randomUUID(), '/moves', 'Moves');
+  await shareProject(s.id, odd);
+  const taken = await connectProject('claude', randomUUID(), '/moves', 'Taken');
+  const after = randomUUID();
+
+  const moved = await moveProject(s.id, after);
+
+  assert.equal(moved.id, s.id);
+  assert.equal(moved.nativeId, after);
+  assert.equal(moved.staffId, odd);
+  // A conversation connected already as another session is never taken over.
+  await assert.rejects(moveProject(s.id, taken.nativeId), /connected already/);
 });

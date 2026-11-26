@@ -419,3 +419,32 @@ export const proposedProjectWork = () =>
     .innerJoin(projectSessions, eq(projectRequests.sessionId, projectSessions.id))
     .where(eq(projectRequests.state, 'proposed'))
     .orderBy(asc(projectRequests.createdAt));
+
+/**
+ * Claude Code carried this conversation on under a new session ID (/bg does):
+ * the row follows it, keeping its Odd and its work. A conversation connected
+ * already as another session is left as it is.
+ */
+export async function moveProject(id: string, nativeId: string): Promise<ProjectSession> {
+  const [moved] = await db
+    .update(projectSessions)
+    .set({ nativeId })
+    .where(eq(projectSessions.id, id))
+    .returning()
+    .catch((e: unknown) => {
+      throw uniqueClash(e)
+        ? new Error('This conversation is connected already as another session in Projects.')
+        : e;
+    });
+  if (!moved) throw new Error('Session not found.');
+  return moved;
+}
+
+/** Postgres's unique violation, as the driver gives it or as Drizzle wraps it. */
+const UNIQUE_VIOLATION = '23505';
+function uniqueClash(e: unknown): boolean {
+  const code = (x: unknown) =>
+    typeof x === 'object' && x !== null && 'code' in x ? (x as { code: unknown }).code : undefined;
+  const cause = typeof e === 'object' && e !== null && 'cause' in e ? e.cause : undefined;
+  return code(e) === UNIQUE_VIOLATION || code(cause) === UNIQUE_VIOLATION;
+}
