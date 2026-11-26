@@ -7,6 +7,7 @@
     ProjectStatus
   } from '@oddboro/ledger';
   import type { StaffProfile } from '../staff/roster.ts';
+  import { LEVEL_NAME } from '@oddboro/ledger/access';
   import Pixel from './Pixel.svelte';
   import { projectApi } from './project-api.ts';
   import ProjectTerminal from './ProjectTerminal.svelte';
@@ -692,6 +693,8 @@
               </label>
               {#if selected.staffId}
                 {@const odd = oddOf(selected.staffId)?.name ?? 'This Odd'}
+                {@const atAct = oddOf(selected.staffId)?.permission === 'act'}
+                {@const level = LEVEL_NAME[oddOf(selected.staffId)?.permission ?? 'draft']}
                 <!-- Every assignment from an Odd waits for Take over and send, unless the owner ticks this. -->
                 <label class="tick"
                   ><input
@@ -707,6 +710,21 @@
                     }}
                   />Let {odd} send work without asking</label
                 >
+                {#if selected.sendsUnasked === selected.staffId && unasked !== selected.staffId}
+                  <!-- The leave counts only at Act (`sendsUnasked` in the ledger), so say whether it holds now. -->
+                  <p
+                    class={atAct
+                      ? 'text-xs text-muted'
+                      : 'rounded-lg bg-ember/10 p-2 text-xs text-ink'}
+                  >
+                    {#if atAct}
+                      {odd} sends work into this session without asking you.
+                    {:else}
+                      {odd} is at {level}, so each piece of work still waits for your Take over and
+                      send. This starts once {odd} is at Act.
+                    {/if}
+                  </p>
+                {/if}
                 {#if unasked === selected.staffId}<div
                     class="flex flex-col gap-2 rounded-lg bg-ember/10 p-2"
                     role="alertdialog"
@@ -714,6 +732,9 @@
                   >
                     <p id="unasked-warning" class="text-ink">
                       {odd} will send work into this session without asking you. It runs with your permissions.
+                      {#if !atAct}
+                        {odd} is at {level} now, so this starts only once {odd} is at Act.
+                      {/if}
                     </p>
                     <div class="flex gap-2">
                       <button
